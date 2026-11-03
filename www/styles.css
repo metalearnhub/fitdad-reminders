@@ -158,3 +158,18 @@ table.lb td.good { color: var(--stand); } table.lb td.bad { color: var(--danger)
 table.lb tbody tr { cursor: pointer; }
 .form label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 15px; }
 .form label.check input { width: 20px; height: 20px; }
+
+.wear { display: block; height: 5px; background: var(--line); border-radius: 3px; margin-top: 5px; overflow: hidden; }
+.wear-fill { display: block; height: 100%; background: var(--stand); border-radius: 3px; }
+.wear-fill.soon { background: var(--amber); } .wear-fill.overdue { background: var(--danger); }
+.fueltag { font-size: 10px; font-weight: 700; color: var(--water); background: rgba(56,189,248,.12); border-radius: 6px; padding: 1px 5px; vertical-align: middle; }
+.newtag { font-size: 10px; font-weight: 700; color: #111; background: var(--amber); border-radius: 6px; padding: 1px 5px; vertical-align: middle; }
+.card.health { border-width: 1px; }
+.card.health.overdue { border-color: rgba(248,113,113,.5); }
+.card.health.soon { border-color: rgba(245,158,11,.5); }
+.card.health.ok { padding: 12px 18px; }
+.checklist { text-align: left; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.checkrow { display: flex; gap: 10px; align-items: flex-start; padding: 9px 2px; border-top: 1px solid var(--line); font-size: 14px; }
+.checkrow input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+.car-alert { cursor: pointer; border-color: rgba(245,158,11,.5); }
+.car-alert.overdue { border-color: rgba(248,113,113,.5); }

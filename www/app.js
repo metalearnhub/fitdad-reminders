@@ -239,6 +239,7 @@
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + name));
     if (name === 'stats') renderStats();
     if (name === 'car' && Car) Car.render();
+    if (name === 'today') render();
     if (name === 'settings') renderSettings();
   }
   async function handleDeepLink(url) {
@@ -732,6 +733,15 @@
     $('standCount').textContent = t.stands;
     $('standEveryLabel').textContent = `Every ${settings.standEvery} min`;
     if ($('view-stats').classList.contains('active')) renderStats();
+    // car parts needing attention, shown on Today
+    const cs = Car && Car.summary();
+    const ca = $('carAlert');
+    if (cs && (cs.overdue || cs.soon)) {
+      ca.hidden = false;
+      ca.className = 'card car-alert' + (cs.overdue ? ' overdue' : '');
+      ca.innerHTML = `<b>🚗 ${cs.car}: ${cs.overdue ? cs.overdue + ' overdue' : ''}${cs.overdue && cs.soon ? ' · ' : ''}${cs.soon ? cs.soon + ' due soon' : ''}</b><p class="muted small" style="margin:4px 0 0">${cs.names.slice(0, 4).join(', ')}${cs.names.length > 4 ? '…' : ''} — tap to check</p>`;
+      ca.onclick = () => showTab('car');
+    } else ca.hidden = true;
   }
 
   function renderSettings() {

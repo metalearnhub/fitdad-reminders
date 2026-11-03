@@ -9,24 +9,43 @@ window.UpkeepCar = function (api) {
   const DAY = 86400000;
   const ID_BASE = 20000; // notification ids 20000–20999
 
-  // Common Philippine PMS-style intervals (edit freely per car)
+  // Wear-and-tear components with typical intervals (whichever comes first; edit per car).
+  // fuel: affects fuel efficiency · why: what goes wrong when it's worn
   const TEMPLATES = [
-    { name: 'Change oil', km: 5000, months: 6, icon: '🛢️' },
-    { name: 'Oil filter', km: 5000, months: 6, icon: '🧴' },
-    { name: 'PMS (preventive maintenance)', km: 10000, months: 6, icon: '🔧' },
-    { name: 'Tire rotation', km: 10000, months: 6, icon: '🛞' },
-    { name: 'Brake check', km: 10000, months: 12, icon: '🛑' },
-    { name: 'Air filter', km: 20000, months: 12, icon: '💨' },
-    { name: 'Aircon cleaning', km: 0, months: 12, icon: '❄️' },
-    { name: 'Battery check', km: 0, months: 6, icon: '🔋' },
-    { name: 'Wiper blades', km: 0, months: 12, icon: '🌧️' },
-    { name: 'Coolant flush', km: 40000, months: 24, icon: '🌡️' },
-    { name: 'Spark plugs', km: 40000, months: 24, icon: '⚡' },
-    { name: 'Transmission fluid', km: 40000, months: 24, icon: '⚙️' },
-    { name: 'LTO registration', km: 0, months: 12, icon: '📄' },
-    { name: 'Insurance renewal', km: 0, months: 12, icon: '🛡️' },
+    { name: 'Change oil', km: 5000, months: 6, icon: '🛢️', fuel: true, why: 'Old, thick oil adds friction and wear.' },
+    { name: 'Oil filter', km: 5000, months: 6, icon: '🧴', fuel: false, why: 'Clogged filter starves the engine of clean oil.' },
+    { name: 'PMS (preventive maintenance)', km: 10000, months: 6, icon: '🔧', fuel: true, why: 'Full check catches small issues early.' },
+    { name: 'Tire pressure check', km: 0, months: 1, icon: '🎈', fuel: true, why: 'Under-inflated tires are the #1 cause of lost km/L.' },
+    { name: 'Tire rotation', km: 10000, months: 6, icon: '🛞', fuel: true, why: 'Uneven wear increases rolling resistance.' },
+    { name: 'Wheel alignment', km: 20000, months: 12, icon: '📐', fuel: true, why: 'Misalignment drags tires and burns fuel.' },
+    { name: 'Tire replacement', km: 50000, months: 60, icon: '🛞', fuel: true, why: 'Rubber ages out at ~5 years even with tread left.' },
+    { name: 'Air filter', km: 20000, months: 12, icon: '💨', fuel: true, why: 'A clogged filter chokes the engine and cuts mileage.' },
+    { name: 'Spark plugs', km: 40000, months: 24, icon: '⚡', fuel: true, why: 'Worn plugs misfire and waste fuel.' },
+    { name: 'Oxygen (O2) sensor', km: 100000, months: 60, icon: '🔬', fuel: true, why: 'A lazy O2 sensor makes the engine run rich.' },
+    { name: 'Fuel filter', km: 40000, months: 24, icon: '⛽', fuel: true, why: 'Restricted fuel flow lowers power and economy.' },
+    { name: 'Throttle body cleaning', km: 20000, months: 12, icon: '🧽', fuel: true, why: 'Carbon build-up causes rough idle and higher consumption.' },
+    { name: 'Drive / fan belt', km: 50000, months: 48, icon: '➰', fuel: true, why: 'A slipping or cracked belt strains the engine; can snap.' },
+    { name: 'Timing belt', km: 100000, months: 60, icon: '⏱️', fuel: false, why: 'If it snaps, the engine can be badly damaged.' },
+    { name: 'Transmission fluid', km: 40000, months: 24, icon: '⚙️', fuel: true, why: 'Old fluid makes shifting slip and wastes power.' },
+    { name: 'Brake pads', km: 30000, months: 24, icon: '🛑', fuel: false, why: 'Thin pads reduce stopping power and damage rotors.' },
+    { name: 'Brake fluid', km: 40000, months: 24, icon: '💧', fuel: false, why: 'Fluid absorbs moisture and brakes feel spongy.' },
+    { name: 'Power steering fluid', km: 40000, months: 24, icon: '🎛️', fuel: false, why: 'Low/old fluid makes steering heavy and wears the pump.' },
+    { name: 'Coolant flush', km: 40000, months: 24, icon: '🌡️', fuel: false, why: 'Old coolant leads to overheating.' },
+    { name: 'Battery check', km: 0, months: 6, icon: '🔋', fuel: false, why: 'Check terminals and charge before it fails.' },
+    { name: 'Battery replacement', km: 0, months: 24, icon: '🔋', fuel: true, why: 'A weak battery strains the alternator.' },
+    { name: 'Cabin / aircon filter', km: 15000, months: 12, icon: '🌬️', fuel: false, why: 'Dirty filter weakens airflow; AC works harder.' },
+    { name: 'Aircon cleaning', km: 0, months: 12, icon: '❄️', fuel: true, why: 'A dirty AC system makes the compressor work harder.' },
+    { name: 'Shock absorbers', km: 80000, months: 60, icon: '🔩', fuel: false, why: 'Worn shocks hurt handling and wear tires faster.' },
+    { name: 'Wiper blades', km: 0, months: 12, icon: '🌧️', fuel: false, why: 'Streaking blades are unsafe in rain.' },
+    { name: 'LTO registration', km: 0, months: 12, icon: '📄', fuel: false, why: 'Avoid fines and apprehension.' },
+    { name: 'Insurance renewal', km: 0, months: 12, icon: '🛡️', fuel: false, why: 'Stay covered.' },
   ];
-  const STARTER = ['Change oil', 'PMS (preventive maintenance)', 'Tire rotation', 'Air filter', 'Battery check', 'LTO registration', 'Insurance renewal'];
+  // Recommended set for a new car (all pre-checked)
+  const STARTER = ['Change oil', 'Oil filter', 'PMS (preventive maintenance)', 'Tire pressure check', 'Tire rotation', 'Wheel alignment', 'Tire replacement', 'Air filter', 'Spark plugs', 'Brake pads', 'Brake fluid', 'Drive / fan belt', 'Battery replacement', 'Coolant flush', 'LTO registration', 'Insurance renewal'];
+  const FUEL_RE = /oil|tire|tyre|align|air filter|spark|o2|oxygen|fuel filter|throttle|belt|transmission|battery|aircon|pms/i;
+  const tplFor = (item) => TEMPLATES.find((t) => t.name.toLowerCase() === String(item.name).toLowerCase());
+  const affectsFuel = (item) => (item.fuel != null ? item.fuel : tplFor(item) ? tplFor(item).fuel : FUEL_RE.test(item.name));
+  const whyFor = (item) => (tplFor(item) ? tplFor(item).why : '');
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const fmtDate = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
@@ -80,9 +99,18 @@ window.UpkeepCar = function (api) {
     if (out.effectiveAt != null) out.daysLeft = Math.ceil((out.effectiveAt - now) / DAY);
     const soonDays = item.remindDays || 7;
     if ((out.kmLeft != null && out.kmLeft <= 0) || (out.dueAt != null && out.dueAt <= now)) out.status = 'overdue';
-    else if ((out.kmLeft != null && out.kmLeft <= 500) || (out.daysLeft != null && out.daysLeft <= soonDays)) out.status = 'soon';
+    else if ((out.kmLeft != null && out.kmLeft <= 500) || (out.daysLeft != null && out.daysLeft <= soonDays) || wear(item, c) >= 0.9) out.status = 'soon';
     return out;
   }
+  // How "used up" an item is: the larger of km used / km interval and time used / month interval
+  function wear(item, c) {
+    const kmPct = item.km ? (currentKm(c) - (item.lastKm || 0)) / item.km : 0;
+    const timePct = item.months ? (Date.now() - item.lastDate) / (item.months * 30.44 * DAY) : 0;
+    return Math.max(0, kmPct, timePct);
+  }
+  const wearBar = (pct, status) => `<span class="wear"><span class="wear-fill ${status}" style="width:${Math.min(100, Math.round(pct * 100))}%"></span></span>`;
+  const statusMap = (c) => Object.fromEntries(itemsOf(c).map((i) => [i.id, dueInfo(i, c).status]));
+
   function dueText(info) {
     const parts = [];
     if (info.status === 'overdue') {
@@ -156,6 +184,32 @@ window.UpkeepCar = function (api) {
   function closeSheet() { $('sheet').classList.remove('show'); sheetOpen = null; }
   async function commit(msg) { await api.save(); render(); await api.reschedule(); if (msg) toast(msg); }
 
+  // ---------- Odometer check: every time the km goes up, re-check every part ----------
+  async function commitWithOdoCheck(c, before, prevKm, msg) {
+    await commit(msg);
+    const km = currentKm(c);
+    if (km <= prevKm) return;
+    const rows = itemsOf(c).map((i) => ({ i, info: dueInfo(i, c), w: wear(i, c), was: before[i.id] }))
+      .filter((x) => x.info.status !== 'ok')
+      .sort((a, b) => b.w - a.w);
+    if (!rows.length) return;
+    const isNew = (x) => x.was === 'ok' || (x.was === 'soon' && x.info.status === 'overdue');
+    const fresh = rows.filter(isNew);
+    sheet(`
+      <div class="sheet-icon">🔎</div><h2>Odometer check · ${fmtKm(km)}</h2>
+      <p class="muted">${fmtKm(km - prevKm)} since the last reading. ${fresh.length ? `<b>${fresh.length} part${fresh.length > 1 ? 's' : ''} just became due.</b>` : 'These parts still need attention:'}</p>
+      <ul class="carlist" style="text-align:left">${rows.map((x) => `
+        <li class="caritem ${x.info.status}" data-odoitem="${x.i.id}">
+          <span class="ci-icon">${x.i.icon || '🔧'}</span>
+          <span class="ci-main"><b>${esc(x.i.name)}${affectsFuel(x.i) ? ' <span class="fueltag">⛽ fuel</span>' : ''}${isNew(x) ? ' <span class="newtag">new</span>' : ''}</b>
+            <span class="muted small">${dueText(x.info)}</span>${wearBar(x.w, x.info.status)}</span>
+        </li>`).join('')}</ul>
+      <div class="sheet-btns"><button class="btn primary" id="ocOk">Got it</button></div>`, (body) => {
+      $('ocOk').onclick = closeSheet;
+      body.querySelectorAll('[data-odoitem]').forEach((li) => { li.onclick = () => itemSheet(li.dataset.odoitem); });
+    });
+  }
+
   let view = 'maint', period = 'month', lbSort = 'eff';
   function render() {
     const el = $('carRoot'); if (!el) return;
@@ -194,6 +248,7 @@ window.UpkeepCar = function (api) {
           <button class="btn water" id="carFuelAdd" style="flex:1">⛽ Log fill-up</button>
         </div>
       </div>
+      ${healthHTML(c, its)}
       <div class="seg seg-wide">
         <button class="chip ${view === 'maint' ? 'on' : ''}" data-view="maint">🔧 Maintenance</button>
         <button class="chip ${view === 'fuel' ? 'on' : ''}" data-view="fuel">⛽ Fuel</button>
@@ -205,11 +260,11 @@ window.UpkeepCar = function (api) {
           ${its.length ? its.map(({ i, info }) => `
             <li class="caritem ${info.status}" data-item="${i.id}">
               <span class="ci-icon">${i.icon || '🔧'}</span>
-              <span class="ci-main"><b>${esc(i.name)}</b><span class="muted small">${dueText(info)}</span></span>
+              <span class="ci-main"><b>${esc(i.name)}${affectsFuel(i) ? ' <span class="fueltag">⛽</span>' : ''}</b><span class="muted small">${dueText(info)}</span>${wearBar(wear(i, c), info.status)}</span>
               <span class="ci-dot"></span>
             </li>`).join('') : '<li class="muted">No items yet. Add one, or start with the recommended schedule.</li>'}
         </ul>
-        ${its.length ? '' : '<button class="btn ghost full" id="carStarter" style="margin-top:10px">Add recommended schedule</button>'}
+        ${its.length ? '<button class="btn ghost full" id="carMissing" style="margin-top:10px">Track more parts (belts, sensors, fluids…)</button>' : '<button class="btn ghost full" id="carStarter" style="margin-top:10px">Add recommended schedule</button>'}
       </div>
       <div class="card">
         <h2>Service history</h2>
@@ -233,6 +288,22 @@ window.UpkeepCar = function (api) {
     el.querySelectorAll('[data-fill]').forEach((r) => { r.onclick = () => fuelForm(c, r.dataset.fill); });
     $('carAddAnother').onclick = () => carForm();
     if ($('carStarter')) $('carStarter').onclick = () => addStarter(c);
+    if ($('carMissing')) $('carMissing').onclick = () => addStarter(c, true);
+    el.querySelectorAll('[data-addfuel]').forEach((b) => { b.onclick = () => addStarter(c, true); });
+  }
+
+  function healthHTML(c, its) {
+    const bad = its.filter((x) => x.info.status !== 'ok').sort((a, b) => wear(b.i, c) - wear(a.i, c));
+    if (!its.length) return '';
+    if (!bad.length) return `<div class="card health ok"><b>✅ All ${its.length} parts OK</b><span class="muted small"> at ${fmtKm(currentKm(c))}</span></div>`;
+    const ov = bad.filter((x) => x.info.status === 'overdue').length;
+    return `<div class="card health ${ov ? 'overdue' : 'soon'}">
+      <b>${ov ? '🔴' : '🟠'} ${ov ? ov + ' overdue' : ''}${ov && bad.length - ov ? ' · ' : ''}${bad.length - ov ? bad.length - ov + ' due soon' : ''}</b>
+      <ul class="carlist">${bad.slice(0, 5).map(({ i, info }) => `
+        <li class="caritem ${info.status}" data-item="${i.id}"><span class="ci-icon">${i.icon || '🔧'}</span>
+          <span class="ci-main"><b>${esc(i.name)}${affectsFuel(i) ? ' <span class="fueltag">⛽</span>' : ''}</b><span class="muted small">${dueText(info)}</span>${wearBar(wear(i, c), info.status)}</span></li>`).join('')}</ul>
+      ${bad.length > 5 ? `<p class="muted small">+${bad.length - 5} more in Maintenance</p>` : ''}
+    </div>`;
   }
 
   function carForm(c) {
@@ -284,23 +355,38 @@ window.UpkeepCar = function (api) {
       <div class="form"><label>Current km<input id="odoKm" type="number" inputmode="numeric" value="${c.odo.length ? currentKm(c) : ''}" /></label></div>
       <div class="sheet-btns"><button class="btn primary" id="odoSave">Save</button><button class="btn ghost" id="odoCancel">Cancel</button></div>`, () => {
       $('odoCancel').onclick = closeSheet;
-      $('odoSave').onclick = async () => { if (addOdo(c, $('odoKm').value)) { closeSheet(); await commit('Odometer updated'); } };
-      setTimeout(() => $('odoKm').select(), 50);
+      $('odoSave').onclick = async () => {
+        const before = statusMap(c), prevKm = currentKm(c);
+        if (addOdo(c, $('odoKm').value)) { closeSheet(); await commitWithOdoCheck(c, before, prevKm, 'Odometer updated'); }
+      };
+      setTimeout(() => { if ($('odoKm')) $('odoKm').select(); }, 50);
     });
   }
 
-  function addStarter(c) {
+  // Checklist of components to track. New car → recommended set pre-checked; existing car → only what's missing.
+  function addStarter(c, missingOnly) {
+    const have = new Set(itemsOf(c).map((i) => i.name.toLowerCase()));
+    const list = TEMPLATES.filter((t) => !have.has(t.name.toLowerCase()));
+    if (!list.length) { toast('Every common part is already tracked'); return; }
+    const pre = (t) => (missingOnly ? t.fuel : STARTER.includes(t.name));
     sheet(`
-      <div class="sheet-icon">📋</div><h2>Add recommended schedule?</h2>
-      <p class="muted">${STARTER.join(', ')}. Each starts from today and your current km — edit any item if it was done earlier.</p>
-      <div class="sheet-btns"><button class="btn primary" id="stYes">Add them</button><button class="btn ghost" id="stNo">I'll add my own</button></div>`, () => {
+      <div class="sheet-icon">📋</div><h2>${missingOnly ? 'Track more parts' : 'Add recommended schedule?'}</h2>
+      <p class="muted small">Each starts from today and your current km. If a part was done earlier (e.g. tires bought 2 years ago), tap it afterwards and set the real date and km. ⛽ = affects fuel efficiency.</p>
+      <div class="checklist">${list.map((t, k) => `
+        <label class="checkrow"><input type="checkbox" data-st="${k}" ${pre(t) ? 'checked' : ''}/>
+          <span>${t.icon} <b>${esc(t.name)}</b>${t.fuel ? ' <span class="fueltag">⛽</span>' : ''}<br>
+          <span class="muted small">${[t.km ? fmtKm(t.km) : '', t.months ? (t.months >= 12 && t.months % 12 === 0 ? t.months / 12 + ' yr' + (t.months > 12 ? 's' : '') : t.months + ' mo') : ''].filter(Boolean).join(' / ')} · ${esc(t.why)}</span></span></label>`).join('')}</div>
+      <div class="sheet-btns"><button class="btn primary" id="stYes">Add selected</button><button class="btn ghost" id="stNo">Cancel</button></div>`, (body) => {
       $('stNo').onclick = closeSheet;
       $('stYes').onclick = async () => {
-        STARTER.forEach((name) => {
-          const t = TEMPLATES.find((x) => x.name === name);
-          data().items.push({ id: uid(), carId: c.id, name: t.name, icon: t.icon, km: t.km, months: t.months, lastDate: Date.now(), lastKm: currentKm(c), remindDays: 7 });
+        let n = 0;
+        body.querySelectorAll('[data-st]').forEach((cb) => {
+          if (!cb.checked) return;
+          const t = list[Number(cb.dataset.st)];
+          data().items.push({ id: uid(), carId: c.id, name: t.name, icon: t.icon, km: t.km, months: t.months, fuel: t.fuel, lastDate: Date.now(), lastKm: currentKm(c), remindDays: 7 });
+          n++;
         });
-        closeSheet(); await commit('Schedule added — tap an item to adjust it');
+        closeSheet(); await commit(n ? `${n} part${n > 1 ? 's' : ''} added — tap any to set when it was last done` : null);
       };
     });
   }
@@ -308,13 +394,13 @@ window.UpkeepCar = function (api) {
   function templateSheet(c) {
     sheet(`
       <div class="sheet-icon">➕</div><h2>Add maintenance item</h2>
-      <div class="chips center-chips">${TEMPLATES.map((t, i) => `<button class="chip" data-tpl="${i}">${t.icon} ${esc(t.name)}</button>`).join('')}
+      <div class="chips center-chips">${TEMPLATES.map((t, i) => `<button class="chip" data-tpl="${i}">${t.icon} ${esc(t.name)}${t.fuel ? ' ⛽' : ''}</button>`).join('')}
         <button class="chip" data-tpl="custom">✏️ Custom…</button></div>
       <div class="sheet-btns"><button class="btn ghost" id="tplCancel">Cancel</button></div>`, (body) => {
       $('tplCancel').onclick = closeSheet;
       body.querySelectorAll('[data-tpl]').forEach((b) => {
         b.onclick = () => {
-          const t = b.dataset.tpl === 'custom' ? { name: '', km: 0, months: 6, icon: '🔧' } : TEMPLATES[Number(b.dataset.tpl)];
+          const t = b.dataset.tpl === 'custom' ? { name: '', km: 0, months: 6, icon: '🔧', fuel: false } : TEMPLATES[Number(b.dataset.tpl)];
           itemForm(c, null, t);
         };
       });
@@ -322,7 +408,7 @@ window.UpkeepCar = function (api) {
   }
 
   function itemForm(c, item, tpl) {
-    const it = item || { name: tpl.name, icon: tpl.icon, km: tpl.km, months: tpl.months, lastDate: Date.now(), lastKm: currentKm(c), remindDays: 7 };
+    const it = item || { name: tpl.name, icon: tpl.icon, km: tpl.km, months: tpl.months, fuel: tpl.fuel, lastDate: Date.now(), lastKm: currentKm(c), remindDays: 7 };
     sheet(`
       <div class="sheet-icon">${it.icon || '🔧'}</div><h2>${item ? 'Edit item' : 'New item'}</h2>
       <div class="form">
@@ -337,6 +423,7 @@ window.UpkeepCar = function (api) {
           <label>At km<input id="ifLastKm" type="number" inputmode="numeric" value="${it.lastKm || ''}" /></label>
         </div>
         <label>Remind me (days before)<input id="ifRemind" type="number" inputmode="numeric" value="${it.remindDays || 7}" /></label>
+        <label class="check"><input id="ifFuel" type="checkbox" ${affectsFuel(it) ? 'checked' : ''} /> Affects fuel efficiency ⛽</label>
       </div>
       <div class="sheet-btns">
         <button class="btn primary" id="ifSave">Save</button>
@@ -354,6 +441,7 @@ window.UpkeepCar = function (api) {
           lastDate: $('ifDate').value ? new Date($('ifDate').value + 'T12:00:00').getTime() : Date.now(),
           lastKm: Number($('ifLastKm').value) || 0,
           remindDays: Math.max(0, Number($('ifRemind').value) || 7),
+          fuel: $('ifFuel').checked,
         };
         if (item) Object.assign(item, upd);
         else data().items.push({ id: uid(), carId: c.id, icon: it.icon, ...upd });
@@ -374,6 +462,7 @@ window.UpkeepCar = function (api) {
     sheet(`
       <div class="sheet-icon">${item.icon || '🔧'}</div><h2>${esc(item.name)}</h2>
       <p class="muted">${dueText(info)}</p>
+      ${whyFor(item) ? `<p class="small">${affectsFuel(item) ? '⛽ ' : ''}${esc(whyFor(item))}</p>` : ''}
       <p class="small">Every ${[item.km ? fmtKm(item.km) : '', item.months ? item.months + ' months' : ''].filter(Boolean).join(' or ')} · last done ${fmtDate(item.lastDate)}${item.lastKm ? ' at ' + fmtKm(item.lastKm) : ''}</p>
       <div class="form">
         <div class="row2">
@@ -461,6 +550,24 @@ window.UpkeepCar = function (api) {
     return svg + '</svg>';
   }
 
+  // Cross-check every part that affects fuel efficiency at the current km
+  function fuelParts(c) {
+    const tracked = itemsOf(c).filter(affectsFuel).map((i) => ({ i, info: dueInfo(i, c), w: wear(i, c) })).sort((a, b) => b.w - a.w);
+    const have = new Set(itemsOf(c).map((i) => i.name.toLowerCase()));
+    const missing = TEMPLATES.filter((t) => t.fuel && !have.has(t.name.toLowerCase()));
+    return { tracked, missing };
+  }
+  function partsHTML(c) {
+    const { tracked, missing } = fuelParts(c);
+    return `
+      <ul class="carlist">${tracked.map(({ i, info, w }) => `
+        <li class="caritem ${info.status}" data-item="${i.id}"><span class="ci-icon">${i.icon || '🔧'}</span>
+          <span class="ci-main"><b>${esc(i.name)}</b><span class="muted small">${info.status === 'ok' ? Math.round(w * 100) + '% used · ' : ''}${dueText(info)}</span>${wearBar(w, info.status)}
+          ${info.status !== 'ok' && whyFor(i) ? `<span class="muted small">${esc(whyFor(i))}</span>` : ''}</span></li>`).join('') || '<li class="muted small">No fuel-related parts tracked yet.</li>'}</ul>
+      ${missing.length ? `<p class="muted small" style="margin:10px 0 6px">Not tracked yet: ${missing.map((t) => t.icon + ' ' + esc(t.name)).join(', ')}</p>
+        <button class="btn ghost full" data-addfuel="1">Track these parts</button>` : ''}`;
+  }
+
   function insights(c) {
     const segs = segments(c);
     const out = [];
@@ -475,15 +582,12 @@ window.UpkeepCar = function (api) {
     const diff = (rEff - all) / all * 100;
     if (diff <= -8) {
       out.push({ t: 'bad', m: `Efficiency is down <b>${Math.abs(diff).toFixed(0)}%</b> lately (${f1(rEff)} vs your usual ${f1(all)} km/L).` });
-      const its = itemsOf(c).map((i) => ({ i, info: dueInfo(i, c) }));
-      const flag = (re) => its.find((x) => re.test(x.i.name));
-      const check = [];
-      check.push('🛞 <b>Tire pressure</b> — under-inflated tires are the #1 cause. Check when cold, match the sticker on the driver door.');
-      [[/air filter/i, '💨 <b>Air filter</b>'], [/oil/i, '🛢️ <b>Engine oil</b>'], [/spark/i, '⚡ <b>Spark plugs</b>'], [/tire rotation/i, '🔄 <b>Tire rotation / alignment</b>'], [/brake/i, '🛑 <b>Brakes</b> (a dragging caliper burns fuel)'], [/PMS/i, '🔧 <b>PMS</b>']].forEach(([re, label]) => {
-        const x = flag(re);
-        if (x && x.info.status !== 'ok') check.push(`${label} — <span class="${x.info.status === 'overdue' ? 'miss' : ''}">${dueText(x.info)}</span>`);
-      });
-      if (!flag(/air filter/i)) check.push('💨 <b>Air filter</b> — a clogged filter cuts mileage; not in your schedule yet.');
+      const { tracked, missing } = fuelParts(c);
+      const check = ['🎈 <b>Tire pressure</b> first — check when cold and match the sticker on the driver door.'];
+      tracked.filter((x) => x.info.status !== 'ok' || x.w >= 0.75).forEach((x) =>
+        check.push(`${x.i.icon || '🔧'} <b>${esc(x.i.name)}</b> — <span class="${x.info.status === 'overdue' ? 'miss' : ''}">${x.info.status === 'ok' ? Math.round(x.w * 100) + '% used' : dueText(x.info)}</span>${whyFor(x.i) ? '. ' + esc(whyFor(x.i)) : ''}`));
+      missing.slice(0, 4).forEach((t) => check.push(`${t.icon} <b>${esc(t.name)}</b> — not tracked; when was it last done? ${esc(t.why)}`));
+      check.push('🛑 A dragging brake caliper also burns fuel — feel for a hot wheel after a drive.');
       check.push('🚦 Driving pattern — heavy traffic, long idling, more aircon or extra load all lower km/L.');
       out.push({ t: 'list', m: check });
     } else if (diff >= 5) {
@@ -498,8 +602,6 @@ window.UpkeepCar = function (api) {
       const pd = (last - prev) / prev * 100;
       if (Math.abs(pd) >= 2) out.push({ t: pd > 0 ? 'bad' : 'good', m: `Fuel price ${pd > 0 ? 'up' : 'down'} <b>${Math.abs(pd).toFixed(1)}%</b>: ₱${f2(last)}/L vs ₱${f2(prev)}/L recently.` });
     }
-    // tire-pressure habit reminder if not tracked
-    if (!itemsOf(c).some((i) => /tire pressure/i.test(i.name))) out.push({ t: 'tip', m: 'Tip: add a "Tire pressure check" item every 1 month in Maintenance — the cheapest way to protect km/L.' });
     return out;
   }
 
@@ -533,6 +635,12 @@ window.UpkeepCar = function (api) {
       <div class="card">
         <h2>Insights & advice</h2>
         <ul class="insights">${ins.map((x) => x.t === 'list' ? `<li class="ins-list"><b>Check these:</b><ul>${x.m.map((m) => `<li>${m}</li>`).join('')}</ul></li>` : `<li class="ins-${x.t}">${x.m}</li>`).join('')}</ul>
+      </div>
+
+      <div class="card">
+        <h2>Parts that affect fuel efficiency</h2>
+        <p class="muted small" style="margin-top:-4px">Checked at ${fmtKm(currentKm(c))} — most worn first.</p>
+        ${partsHTML(c)}
       </div>
 
       <div class="card">
@@ -623,11 +731,12 @@ window.UpkeepCar = function (api) {
         const t = $('fuDate').value === isoDay(Date.now()) ? Date.now() : new Date($('fuDate').value + 'T12:00:00').getTime();
         const rec = { t, km, liters, price, total: total || (liters && price ? +(liters * price).toFixed(2) : 0), full: $('fuFull').checked, station: $('fuS').value.trim() };
         c.fuel = c.fuel || [];
+        const before = statusMap(c), prevKm = currentKm(c);
         if (f) Object.assign(f, rec); else c.fuel.push({ id: uid(), ...rec });
         if (km > currentKm(c)) addOdo(c, km, Math.min(t, Date.now()));
         closeSheet(); view = 'fuel';
         const segs = segments(c), seg = segs[segs.length - 1];
-        await commit(!f && seg && seg.fill.km === km ? `${f1(seg.eff)} km/L this tank · ₱${f2(seg.perKm)}/km` : f ? 'Saved' : first ? 'Starting point saved — log your next full tank' : 'Fill-up logged');
+        await commitWithOdoCheck(c, before, prevKm, !f && seg && seg.fill.km === km ? `${f1(seg.eff)} km/L this tank · ₱${f2(seg.perKm)}/km` : f ? 'Saved' : first ? 'Starting point saved — log your next full tank' : 'Fill-up logged');
       };
       if ($('fuDel')) $('fuDel').onclick = async () => {
         if (!confirm('Delete this fill-up?')) return;
@@ -650,7 +759,8 @@ window.UpkeepCar = function (api) {
   function summary() {
     const c = car(); if (!c) return null;
     const its = itemsOf(c).map((i) => dueInfo(i, c));
-    return { overdue: its.filter((x) => x.status === 'overdue').length, soon: its.filter((x) => x.status === 'soon').length };
+    const named = itemsOf(c).map((i) => ({ name: i.name, status: dueInfo(i, c).status })).filter((x) => x.status !== 'ok');
+    return { car: c.name, overdue: its.filter((x) => x.status === 'overdue').length, soon: its.filter((x) => x.status === 'soon').length, names: named.sort((a, b) => (a.status === 'overdue' ? -1 : 1)).map((x) => x.name) };
   }
 
   return { render, buildNotifications, handleAction, summary, data, isSheetOpen: () => !!sheetOpen };

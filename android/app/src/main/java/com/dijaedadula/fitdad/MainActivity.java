@@ -41,6 +41,8 @@ public class MainActivity extends BridgeActivity {
                 FitDadWidget.log(this, false, "notif");
             } else if ("drank".equals(action) && ("water".equals(kind) || "check".equals(kind))) {
                 FitDadWidget.log(this, true, "notif");
+            } else if ("endwork".equals(action)) {
+                FitDadWidget.endWork(this, "notif");
             } else {
                 return;
             }

@@ -45,6 +45,12 @@ sleep 12
 adb shell "am start -n com.dijaedadula.fitdad/.MainActivity --ei LocalNotificationId 2000 --es LocalNotificationUserAction drank --es LocalNotficationObject '{\"id\":2000,\"extra\":{\"kind\":\"water\"}}'"
 sleep 6
 adb exec-out screencap -p > smoke/07-after-notif-actions.png
+# "Done working" from the widget
+adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_ENDWORK | tee -a smoke/steps.txt
+sleep 3
+adb shell "am start -n com.dijaedadula.fitdad/.MainActivity"
+sleep 5
+adb exec-out screencap -p > smoke/08-done-working.png
 adb shell run-as com.dijaedadula.fitdad cat shared_prefs/CapacitorStorage.xml > smoke/prefs2.xml
 adb logcat -d > smoke/logcat-full.txt
 grep -iE "Capacitor/Console|JavaScript Error|AndroidRuntime|FATAL|LocalNotification" smoke/logcat-full.txt > smoke/logcat-app.txt || true

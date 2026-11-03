@@ -155,7 +155,7 @@
 
       await LN.registerActionTypes({
         types: [
-          { id: 'STAND', actions: [{ id: 'done', title: 'Done ✓' }, { id: 'snooze', title: 'Snooze 5 min' }] },
+          { id: 'STAND', actions: [{ id: 'done', title: 'Done ✓' }, { id: 'snooze', title: 'Snooze 5 min' }, { id: 'endwork', title: 'Done working' }] },
           { id: 'WATER', actions: [{ id: 'drank', title: 'Drank a glass' }, { id: 'snooze', title: 'Snooze 10 min' }] },
           { id: 'NUDGE', actions: [{ id: 'start', title: 'Start now' }, { id: 'later', title: 'Later' }, { id: 'dayoff', title: 'Day off' }] },
         ],
@@ -256,6 +256,7 @@
     if (k === 'stand') {
       if (a === 'snooze') await snooze('stand', 5);
       else if (a === 'done') toast('Nice. Stand-up logged.');
+      else if (a === 'endwork') { if (['active', 'paused'].includes(today().status)) endSession(); await save(); render(); await reschedule(); showWorkSummary(); return; }
     } else if (k === 'water') {
       if (a === 'snooze') await snooze('water', 10);
       else if (a === 'drank') toast(`+${settings.glass} ml logged`);
@@ -298,7 +299,36 @@
   }
   function closeSegment(t, at) { if (t.segStart) { t.segments.push([t.segStart, at]); t.segStart = null; } }
   function pauseSession() { const t = today(); closeSegment(t, Date.now()); t.status = 'paused'; t.pausedAt = Date.now(); toast('Paused'); }
-  function endSession() { const t = today(); closeSegment(t, Date.now()); t.status = 'ended'; t.pausedAt = null; toast('Day ended. Good work.'); }
+  function endSession() {
+    const t = today();
+    closeSegment(t, Date.now());
+    t.status = 'ended'; t.pausedAt = null;
+    logEvent(t, 'endwork', 'app');
+    setTimeout(showWorkSummary, 150);
+  }
+
+  // Results after "Done working" — everything here is also kept in Stats
+  function showWorkSummary() {
+    const st = dayStats(logicalKey());
+    const segs = (today().segments || []);
+    const last = segs[segs.length - 1];
+    const pct = st.expected ? Math.round(100 * Math.min(1, st.stands / st.expected)) : null;
+    const body = $('sheetBody');
+    body.innerHTML = `<div class="sheet-icon">✅</div><h2>Done working</h2>
+      <p class="muted">${last ? `${fmtTime(new Date(last[0]))} – ${fmtTime(new Date(last[1]))}` : ''}${segs.length > 1 ? ` · ${segs.length} sessions today` : ''}</p>
+      <div class="kpis" style="text-align:left">
+        <div class="kpi"><div class="kv">${fmtDur(st.workMs)}</div><div class="kl">work time today</div></div>
+        <div class="kpi"><div class="kv stand-c">${st.stands}${st.expected ? '/' + st.expected : ''}</div><div class="kl">stand-ups${pct !== null ? ' · ' + pct + '%' : ''}</div></div>
+        <div class="kpi"><div class="kv">${st.workMs ? fmtDur(st.longest) : '—'}</div><div class="kl">longest sitting stretch</div></div>
+        <div class="kpi"><div class="kv water-c">${liters(st.water)}</div><div class="kl">water so far of ${liters(settings.waterGoal)}</div></div>
+      </div>
+      <p class="small">Reminders answered: <b>${st.answered}/${st.reminders}</b>${st.missed ? ` · <span class="miss">${st.missed} missed</span>` : ''}</p>
+      <p class="muted small">Stand-up reminders are off. Water reminders continue until bedtime.</p>
+      <div class="sheet-btns"><button class="btn primary" id="wsOk">Nice</button><button class="btn ghost" id="wsStats">See Stats</button></div>`;
+    $('wsOk').onclick = closeSheet;
+    $('wsStats').onclick = () => { closeSheet(); showTab('stats'); };
+    $('sheet').classList.add('show');
+  }
   function dayOff() { const t = today(); markDayStart(t); t.status = 'off'; toast('Day off — see you tomorrow'); }
 
   function sessionEnd(t) {
@@ -566,6 +596,17 @@
     return `7 days: avg ${(a.avgWater / 1000).toFixed(1)} L · goal ${a.goalDays}/7 · ${a.stands} stand-ups · streak ${streak()}`;
   }
 
+  function workSessionsHTML() {
+    const r = today(), segs = (r.segments || []).slice();
+    if (r.segStart) segs.push([r.segStart, null]);
+    if (!segs.length) return '';
+    const stands = (r.log || []).filter((e) => e.k === 'stand').map((e) => e.t);
+    return `<h3>Work sessions</h3><ul class="timeline">${segs.map(([a, b]) => {
+      const end = b || Date.now(), n = stands.filter((t) => t >= a && t <= end).length;
+      return `<li><span>${fmtTime(new Date(a))} – ${b ? fmtTime(new Date(b)) : 'now'}<br><span class="muted small">${n} stand-up${n === 1 ? '' : 's'}</span></span><span class="muted">${fmtDur(end - a)}</span></li>`;
+    }).join('')}</ul>`;
+  }
+
   function renderStats() {
     const t = dayStats(logicalKey());
     const tw = t;
@@ -578,8 +619,9 @@
         <div class="kpi"><div class="kv">${t.workMs ? fmtDur(t.workMs) : '—'}</div><div class="kl">work time tracked</div></div>
       </div>
       <p class="small">Reminders answered: <b>${t.answered}/${t.reminders}</b>${t.missed ? ` · <span class="miss">${t.missed} missed</span>` : ''}</p>
+      ${workSessionsHTML()}
       <p class="muted small">${t.fromNotif + tw.log.filter((e) => e.k === 'water' && e.src === 'notif' && tw.key !== t.key).length} confirmed from notifications · ${t.snoozes + (tw.key !== t.key ? tw.snoozes : 0)} snoozed · ${t.skips + (tw.key !== t.key ? tw.skips : 0)} skipped</p>`;
-    const names = { water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
+    const names = { endwork: '✅ Done working', water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
     const evs = (tw.key === t.key ? t.log : tw.log.concat(t.log)).slice().sort((a, b) => b.t - a.t).slice(0, 30);
     $('statTimeline').innerHTML = evs.length
       ? evs.map((e) => `<li><span>${names[e.k] || e.k}</span><span class="muted">${fmtTime(new Date(e.t))}${e.src === 'notif' ? ' · 🔔' : ''}</span></li>`).join('')
@@ -634,19 +676,21 @@
       $('statusHeadline').textContent = 'Reminders are on';
       $('statusSub').textContent = `Stand-ups run until you end the day or bedtime (${fmtTime(new Date(sessionEnd(t)))}).`;
       $('sessionInfo').textContent = `Since ${fmtTime(new Date(t.startedAt))}`;
-      mk('Pause', 'ghost', pauseSession); mk('End day', 'danger', endSession);
+      mk('Pause', 'ghost', pauseSession); mk('Done working ✓', 'primary', endSession);
     } else if (t.status === 'paused') {
       pill.textContent = 'Paused'; pill.classList.add('paused');
       $('statusHeadline').textContent = 'On a break';
       $('statusSub').textContent = 'Reminders are paused. Resume when you sit back down.';
       $('sessionInfo').textContent = '';
-      mk('Resume', 'primary', startSession); mk('End day', 'danger', endSession);
+      mk('Resume', 'primary', startSession); mk('Done working ✓', 'ghost', endSession);
     } else if (t.status === 'ended') {
-      pill.textContent = 'Done';
-      $('statusHeadline').textContent = 'Day wrapped up';
-      $('statusSub').textContent = 'Stand-ups off. Water reminders keep going until bedtime.';
-      $('sessionInfo').textContent = '';
-      mk('Start again', 'primary', startSession);
+      const st = dayStats(logicalKey());
+      const segs = t.segments || [];
+      pill.textContent = 'Done working';
+      $('statusHeadline').textContent = `Worked ${fmtDur(st.workMs)} today`;
+      $('statusSub').textContent = `${st.stands}${st.expected ? '/' + st.expected : ''} stand-ups · longest sit ${fmtDur(st.longest)}. Stand-ups off; water keeps going until bedtime.`;
+      $('sessionInfo').textContent = segs.length ? `Ended ${fmtTime(new Date(segs[segs.length - 1][1]))}` : '';
+      mk('Back to work', 'ghost', startSession); mk('See results', 'primary', showWorkSummary);
     } else if (t.status === 'off') {
       pill.textContent = 'Day off'; pill.classList.add('off');
       $('statusHeadline').textContent = 'Rest day';

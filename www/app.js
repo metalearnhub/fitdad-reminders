@@ -39,7 +39,7 @@
   const DEFAULTS = {
     standEvery: 30,       // minutes
     waterEvery: 60,       // minutes (used when waterMode = 'fixed')
-    waterMode: 'auto',    // 'auto' = spread remaining glasses over the remaining workday; 'fixed' = every N minutes
+    waterMode: 'auto',    // 'auto' = spread remaining glasses over the rest of the awake window; 'fixed' = every N minutes
     waterGoal: 3000,      // ml
     glass: 250,           // ml
     maxHours: 10,         // auto-end session
@@ -48,6 +48,8 @@
     nudgeMax: 4,
     nudgeDays: [0, 1, 2, 3, 4, 5, 6], // Sun..Sat
     checkTime: '16:00',
+    wakeTime: '06:00',    // water reminders run across the awake window
+    awakeHours: 16,       // 14–20
   };
 
   let settings = { ...DEFAULTS };
@@ -68,13 +70,27 @@
   // planned interval (minutes) for a full day, used for the plan preview
   const plannedInterval = () => settings.waterMode === 'fixed'
     ? settings.waterEvery
-    : Math.max(15, Math.floor((settings.maxHours * 60) / totalGlasses()));
+    : Math.max(15, Math.floor((settings.awakeHours * 60) / totalGlasses()));
 
-  function today() {
-    const k = dayKey();
+  function rec(k) {
     if (!days[k]) days[k] = { status: 'idle', startedAt: null, pausedAt: null, pausedMs: 0, water: 0, stands: 0 };
     return days[k];
   }
+  function today() { return rec(dayKey()); }
+
+  // Awake window for the day that starts on `date`: wake time → wake + awakeHours
+  function windowFor(date) {
+    const start = atTime(date, settings.wakeTime).getTime();
+    return { key: dayKey(date), start, end: start + settings.awakeHours * 3600000 };
+  }
+  // The water "day" you're in right now (late-night glasses count toward the day you woke up)
+  function currentWindow() {
+    const now = Date.now();
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    const yw = windowFor(y), tw = windowFor(new Date());
+    return (now < tw.start && now < yw.end) ? yw : tw;
+  }
+  function waterRec() { return rec(currentWindow().key); }
 
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -156,7 +172,7 @@
       else if (a === 'done') { t.stands++; toast('Nice. Stand-up logged.'); }
     } else if (kind === 'water' || kind === 'check') {
       if (a === 'snooze') await snooze('water', 10);
-      else if (a === 'drank') { t.water += settings.glass; toast(`+${settings.glass} ml logged`); }
+      else if (a === 'drank') { waterRec().water += settings.glass; toast(`+${settings.glass} ml logged`); }
     } else if (kind === 'nudge') {
       if (a === 'start') startSession();
       else if (a === 'dayoff') dayOff();
@@ -209,7 +225,6 @@
     const out = [];
     const now = Date.now();
     const t = today();
-    const remaining = Math.max(0, settings.waterGoal - t.water);
 
     // 1) Session reminders (only while active)
     if (t.status === 'active') {
@@ -224,42 +239,51 @@
           channelId: CH_ALARM, actionTypeId: 'STAND', extra: { kind: 'stand' }, at: ts,
         });
       }
-      // Water: only as many reminders as glasses still needed — stops once the goal is met
-      const left = glassesLeft(t.water);
-      const total = totalGlasses();
-      let times = [];
-      if (left > 0) {
-        if (settings.waterMode === 'fixed') {
-          const step = settings.waterEvery * 60000;
-          for (let ts = firstAfter(step); ts <= end && times.length < left; ts += step) times.push(ts);
-        } else {
-          // auto: spread the remaining glasses evenly across the remaining workday
-          const step = Math.max(15 * 60000, Math.floor((end - now) / left));
-          for (let k = 1; k <= left; k++) { const ts = now + k * step; if (ts <= end) times.push(ts); }
-        }
+    }
+
+    // 2) Water across the awake window — current day plus the next 2, so it keeps working even if the app isn't opened
+    const total = totalGlasses();
+    const cw = currentWindow();
+    for (let d = 0; d < 3; d++) {
+      const base = new Date(cw.start); base.setDate(base.getDate() + d);
+      const w = windowFor(base);
+      const drank = d === 0 ? rec(w.key).water : 0;
+      const left = glassesLeft(drank);
+      if (left === 0 || w.end <= now) continue;
+      const times = [];
+      if (settings.waterMode === 'fixed') {
+        const step = settings.waterEvery * 60000;
+        for (let ts = w.start + step; ts <= w.end && times.length < left; ts += step) if (ts > now + 30000) times.push(ts);
+      } else {
+        // auto: spread the glasses still needed evenly over what's left of the awake window
+        const from = Math.max(now, w.start);
+        const step = Math.max(15 * 60000, (w.end - from) / left);
+        for (let k = 0; k < left; k++) { const ts = Math.round(from + step * (k + 0.5)); if (ts <= w.end) times.push(ts); }
       }
       times.slice(0, 40).forEach((ts, k) => {
         const glassNo = total - left + k + 1;
         const after = Math.max(0, settings.waterGoal - (glassNo - 1) * settings.glass);
         out.push({
-          id: ID.WATER + k, title: `Drink water 💧 Glass ${glassNo} of ${total}`,
+          id: ID.WATER + d * 100 + k, title: `Drink water 💧 Glass ${glassNo} of ${total}`,
           body: `${settings.glass} ml now · ${liters(after)} left to reach ${liters(settings.waterGoal)}`,
           channelId: CH_WATER, actionTypeId: 'WATER', extra: { kind: 'water' }, at: ts,
         });
       });
     }
 
-    // 2) Water safety-net check-in today
+    // 3) Water safety-net check-in today
+    const wr = rec(cw.key);
+    const wRemaining = Math.max(0, settings.waterGoal - wr.water);
     const check = atTime(new Date(), settings.checkTime).getTime();
-    if (check > now && t.status !== 'off' && remaining > settings.waterGoal * 0.4) {
+    if (check > now && check < cw.end && wRemaining > settings.waterGoal * 0.4) {
       out.push({
-        id: ID.CHECK, title: `Behind on water: ${liters(remaining)} to go`,
-        body: `You've had ${liters(t.water)} of ${liters(settings.waterGoal)}. Drink a glass now.`,
+        id: ID.CHECK, title: `Behind on water: ${liters(wRemaining)} to go`,
+        body: `You've had ${liters(wr.water)} of ${liters(settings.waterGoal)}. Drink a glass now.`,
         channelId: CH_WATER, actionTypeId: 'WATER', extra: { kind: 'check' }, at: check,
       });
     }
 
-    // 3) Morning nudges for today (if not started) and the next 13 days
+    // 4) Morning nudges for today (if not started) and the next 13 days
     let n = 0;
     for (let d = 0; d < 14; d++) {
       const date = new Date(); date.setDate(date.getDate() + d);
@@ -321,7 +345,7 @@
     const s = next('stand'), w = next('water'), nd = next('nudge');
     const parts = [];
     if (s) parts.push(`Next stand-up ${fmtTime(new Date(s.at))}`);
-    if (w) parts.push(`next water ${fmtTime(new Date(w.at))}`);
+    if (w) parts.push(`${parts.length ? "next" : "Next"} water ${fmtTime(new Date(w.at))}`);
     if (!parts.length && nd) parts.push(`Next nudge ${new Date(nd.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
     $('nextLabel').textContent = parts.join(' · ');
   }
@@ -372,17 +396,20 @@
       mk('Start day', 'primary', startSession); mk('Day off', 'ghost', dayOff);
     }
 
-    // water
-    const pct = Math.min(1, t.water / settings.waterGoal);
+    // water (uses the awake-window day)
+    const wt = waterRec();
+    const pct = Math.min(1, wt.water / settings.waterGoal);
     $('waterRing').style.strokeDashoffset = String(326.7 * (1 - pct));
-    $('waterAmount').textContent = liters(t.water);
-    const left = settings.waterGoal - t.water;
+    $('waterAmount').textContent = liters(wt.water);
+    const left = settings.waterGoal - wt.water;
     $('waterLeft').textContent = left > 0 ? `${liters(left)} to go` : 'Goal reached 🎉';
     $('waterGoalLabel').textContent = `Goal ${liters(settings.waterGoal)}`;
-    const total = totalGlasses(), gl = glassesLeft(t.water);
-    $('waterPlan').textContent = gl > 0
+    const total = totalGlasses(), gl = glassesLeft(wt.water);
+    const cwin = currentWindow();
+    $('waterPlan').textContent = (gl > 0
       ? `Glass ${total - gl + 1} of ${total} · ${gl} × ${settings.glass} ml left`
-      : `All ${total} glasses done — reminders stopped for today`;
+      : `All ${total} glasses done — reminders stopped for today`)
+      + ` · awake ${fmtTime(new Date(cwin.start))}–${fmtTime(new Date(cwin.end))}`;
     $('waterPlus').textContent = `+ ${settings.glass} ml`;
 
     // stand
@@ -401,6 +428,8 @@
     $('s-nudgeRepeat').value = settings.nudgeRepeat;
     $('s-nudgeMax').value = settings.nudgeMax;
     $('s-checkTime').value = settings.checkTime;
+    $('s-wakeTime').value = settings.wakeTime;
+    awakeDraft = null;
     renderWaterPlanner();
     const wrap = $('s-days'); wrap.innerHTML = '';
     ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach((l, i) => {
@@ -416,6 +445,7 @@
   }
 
   let modeDraft = null;
+  let awakeDraft = null;
   const TEMPLATES = [
     { label: '2.0 L · 8 × 250', goal: 2000, glass: 250 },
     { label: '2.5 L · 10 × 250', goal: 2500, glass: 250 },
@@ -433,6 +463,17 @@
       b.onclick = () => { $('s-waterGoal').value = x.goal; $('s-glass').value = x.glass; renderWaterPlanner(); };
       tpl.appendChild(b);
     });
+    const hours = awakeDraft || settings.awakeHours;
+    const ah = $('s-awake'); ah.innerHTML = '';
+    for (let h = 20; h >= 14; h--) {
+      const b = document.createElement('button');
+      b.className = 'chip' + (h === hours ? ' on' : ''); b.textContent = h + ' h';
+      b.onclick = () => { awakeDraft = h; renderWaterPlanner(); };
+      ah.appendChild(b);
+    }
+    const wake = $('s-wakeTime').value || settings.wakeTime;
+    const endD = atTime(new Date(), wake); endD.setHours(endD.getHours() + hours);
+    $('s-awakeRange').textContent = `Water reminders from ${fmtTime(atTime(new Date(), wake))} to ${fmtTime(endD)}`;
     const fixed = (modeDraft || settings.waterMode) === 'fixed';
     $('s-waterMode-auto').classList.toggle('on', !fixed);
     $('s-waterMode-fixed').classList.toggle('on', fixed);
@@ -440,12 +481,11 @@
     // live preview from the current (unsaved) inputs
     const goal = Number($('s-waterGoal').value) || settings.waterGoal;
     const glass = Number($('s-glass').value) || settings.glass;
-    const hours = Number($('s-maxHours').value) || settings.maxHours;
     const n = Math.ceil(goal / glass);
     const every = fixed ? (Number($('s-waterEvery').value) || settings.waterEvery) : Math.max(15, Math.floor(hours * 60 / n));
     const needed = n * every;
     let msg = `${(goal / 1000).toFixed(2)} L = ${n} glasses × ${glass} ml, one every ${every} min (${(needed / 60).toFixed(1)} h).`;
-    if (fixed && needed > hours * 60) msg += ` ⚠ That's longer than your ${hours} h day — the last ${Math.ceil((needed - hours * 60) / every)} glass(es) won't fit. Shorten the interval or use bigger glasses.`;
+    if (fixed && needed > hours * 60) msg += ` ⚠ That's longer than your ${hours} h awake window — the last ${Math.ceil((needed - hours * 60) / every)} glass(es) won't fit before bedtime. Shorten the interval or use bigger glasses.`;
     else msg += ' Reminders stop once the goal is met.';
     $('s-waterPreview').textContent = msg;
   }
@@ -464,6 +504,8 @@
     settings.nudgeMax = num('s-nudgeMax', 1, 10, DEFAULTS.nudgeMax);
     settings.nudgeTime = $('s-nudgeTime').value || DEFAULTS.nudgeTime;
     settings.checkTime = $('s-checkTime').value || DEFAULTS.checkTime;
+    settings.wakeTime = $('s-wakeTime').value || DEFAULTS.wakeTime;
+    settings.awakeHours = awakeDraft || settings.awakeHours;
   }
 
   // ---------- Wire UI ----------
@@ -475,15 +517,15 @@
         if (tab.dataset.view === 'settings') renderSettings();
       };
     });
-    $('waterPlus').onclick = async () => { today().water += settings.glass; await save(); render(); await reschedule(); };
-    $('waterMinus').onclick = async () => { const t = today(); t.water = Math.max(0, t.water - settings.glass); await save(); render(); await reschedule(); };
+    $('waterPlus').onclick = async () => { waterRec().water += settings.glass; await save(); render(); await reschedule(); };
+    $('waterMinus').onclick = async () => { const t = waterRec(); t.water = Math.max(0, t.water - settings.glass); await save(); render(); await reschedule(); };
     $('standPlus').onclick = async () => { today().stands++; await save(); render(); toast('Stand-up logged'); };
     $('saveSettings').onclick = async () => { readSettings(); await save(); render(); await reschedule(); toast('Saved — reminders updated'); };
     $('testAlarm').onclick = () => testNotif('stand');
     $('testWater').onclick = () => testNotif('water');
     $('s-waterMode-auto').onclick = () => { modeDraft = 'auto'; renderWaterPlanner(); };
     $('s-waterMode-fixed').onclick = () => { modeDraft = 'fixed'; renderWaterPlanner(); };
-    ['s-waterGoal', 's-glass', 's-waterEvery', 's-maxHours'].forEach((id) => { $(id).oninput = renderWaterPlanner; });
+    ['s-waterGoal', 's-glass', 's-waterEvery', 's-wakeTime'].forEach((id) => { $(id).oninput = renderWaterPlanner; });
   }
 
   // ---------- Boot ----------

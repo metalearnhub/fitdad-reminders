@@ -173,3 +173,4 @@ table.lb tbody tr { cursor: pointer; }
 .checkrow input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
 .car-alert { cursor: pointer; border-color: rgba(245,158,11,.5); }
 .car-alert.overdue { border-color: rgba(248,113,113,.5); }
+.good-c { color: var(--stand); }

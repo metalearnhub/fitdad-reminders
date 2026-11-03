@@ -210,7 +210,7 @@ window.UpkeepCar = function (api) {
     });
   }
 
-  let view = 'maint', period = 'month', lbSort = 'eff';
+  let view = 'maint', period = 'all', lbSort = 'eff';
   function render() {
     const el = $('carRoot'); if (!el) return;
     const d = data(); const c = car();
@@ -494,16 +494,22 @@ window.UpkeepCar = function (api) {
   // Each fill: { id, t, km, liters, total, price (₱/L), full, station }
   // Efficiency is measured between two FULL fills: km driven ÷ liters added since the previous full tank.
   const fills = (c) => (c.fuel = c.fuel || []).slice().sort((a, b) => a.km - b.km || a.t - b.t);
+  // Also records, per fill, how it was scored (shown in "All fill-ups")
+  let fillNotes = {};
   function segments(c) {
     const f = fills(c), out = [];
+    fillNotes = {};
     let lastFull = null, liters = 0, cost = 0;
-    f.forEach((x) => {
+    f.forEach((x, idx) => {
       if (lastFull) { liters += x.liters || 0; cost += x.total || 0; }
+      if (idx === 0) { fillNotes[x.id] = 'starting point'; lastFull = x; return; } // the first record is always the baseline
+      if (!x.full) fillNotes[x.id] = 'partial — counted at your next full tank';
       if (x.full) {
         if (lastFull && liters > 0 && x.km > lastFull.km) {
           const dist = x.km - lastFull.km;
           out.push({ fill: x, from: lastFull, t: x.t, dist, liters, cost, eff: dist / liters, l100: liters / dist * 100, perKm: cost / dist, price: x.price || (x.total && x.liters ? x.total / x.liters : 0) });
-        }
+          fillNotes[x.id] = `<b class="good-c">${(dist / liters).toFixed(1)} km/L</b> · ${Math.round(dist)} km · ₱${(cost / dist).toFixed(2)}/km`;
+        } else fillNotes[x.id] = 'full tank — no liters to compare';
         lastFull = x; liters = 0; cost = 0;
       }
     });
@@ -622,7 +628,7 @@ window.UpkeepCar = function (api) {
     return `
       <div class="card">
         <div class="water-head"><h2>Fuel efficiency</h2><span class="muted small">${last ? 'last tank ' + f1(last.eff) + ' km/L' : ''}</span></div>
-        <div class="chips">${['month', 'quarter', 'year', 'all'].map((p) => `<button class="chip ${p === period ? 'on' : ''}" data-period="${p}">${PERIOD_LABEL[p]}</button>`).join('')}</div>
+        <div class="chips">${['all', 'month', 'quarter', 'year'].map((p) => `<button class="chip ${p === period ? 'on' : ''}" data-period="${p}">${PERIOD_LABEL[p]} (${stats(c, p).segs.length})</button>`).join('')}</div>
         <div class="kpis">
           <div class="kpi"><div class="kv water-c">${f1(cur.eff)}<small> km/L</small></div><div class="kl">avg efficiency${cur.eff ? ' · ' + f1(100 / cur.eff) + ' L/100km' : ''}</div>${pv ? deltaTag(cur.eff, prev.eff, true).replace('${x}', pv) : ''}</div>
           <div class="kpi"><div class="kv">₱${f2(cur.perKm)}</div><div class="kl">cost per km</div>${pv ? deltaTag(cur.perKm, prev.perKm, false).replace('${x}', pv) : ''}</div>
@@ -660,7 +666,7 @@ window.UpkeepCar = function (api) {
         ${lb.length ? `<div class="tablewrap"><table class="lb">
           <thead><tr><th>#</th><th>Date</th><th>km</th><th>L</th><th>km/L</th><th>₱/L</th><th>₱/km</th></tr></thead>
           <tbody>${lb.map((s, i) => `<tr data-fill="${s.fill.id}"><td>${medal(i)}</td><td>${new Date(s.t).toLocaleDateString([], { month: 'short', day: 'numeric' })}</td><td>${Math.round(s.dist)}</td><td>${f1(s.liters)}</td><td class="${s.eff >= (cur.eff || 0) ? 'good' : 'bad'}"><b>${f1(s.eff)}</b></td><td>${f2(s.price)}</td><td>${f2(s.perKm)}</td></tr>`).join('')}</tbody>
-        </table></div>` : '<p class="muted small">No complete tanks in this period yet.</p>'}
+        </table></div>` : segments(c).length ? `<p class="muted small">No tanks finished ${PERIOD_LABEL[period].toLowerCase()}. <button class="linkbtn" data-period="all" style="display:inline;margin:0">Show all time</button></p>` : '<p class="muted small">Log a full tank after your starting point to see the first result.</p>'}
       </div>
 
       <div class="card">
@@ -674,7 +680,7 @@ window.UpkeepCar = function (api) {
       <div class="card">
         <h2>All fill-ups</h2>
         <ul class="timeline">${fills(c).slice().reverse().slice(0, 40).map((f) => `
-          <li data-fill="${f.id}"><span>${f.full ? '⛽' : '◐'} ${fmtKm(f.km)}${f.station ? ' · ' + esc(f.station) : ''}<br><span class="muted small">${f.liters ? f1(f.liters) + ' L' : 'starting point'}${f.price ? ' · ₱' + f2(f.price) + '/L' : ''}${f.full ? '' : ' · partial'}</span></span>
+          <li data-fill="${f.id}"><span>${f.full ? '⛽' : '◐'} ${fmtKm(f.km)}${f.station ? ' · ' + esc(f.station) : ''}<br><span class="muted small">${f.liters ? f1(f.liters) + ' L' : '—'}${f.price ? ' · ₱' + f2(f.price) + '/L' : ''}</span><br><span class="small">${fillNotes[f.id] || ''}</span></span>
           <span class="muted" style="text-align:right">${fmtDate(f.t)}${f.total ? '<br>' + peso(f.total) : ''}</span></li>`).join('') || '<li class="muted">No fill-ups yet.</li>'}</ul>
       </div>`;
   }
@@ -726,9 +732,11 @@ window.UpkeepCar = function (api) {
         const price = parseFloat(P.value) || (liters && total ? total / liters : 0);
         if (!first && !f && !liters) { toast('Enter the liters you added'); return; }
         const others = (c.fuel || []).filter((x) => !f || x.id !== f.id);
-        const prevMax = others.reduce((m, x) => Math.max(m, x.km), 0);
-        if (!f && others.length && km <= prevMax) { toast(`Odometer must be higher than your last fill-up (${fmtKm(prevMax)})`); return; }
         const t = $('fuDate').value === isoDay(Date.now()) ? Date.now() : new Date($('fuDate').value + 'T12:00:00').getTime();
+        if (others.some((x) => x.km === km)) { toast(`There's already a fill-up at ${fmtKm(km)}`); return; }
+        // older receipts can be added anytime, as long as km and dates line up
+        const clash = others.find((x) => (x.km < km && isoDay(x.t) > isoDay(t)) || (x.km > km && isoDay(x.t) < isoDay(t)));
+        if (clash) { toast(`Check the date or km — it conflicts with ${fmtKm(clash.km)} on ${fmtDate(clash.t)}`); return; }
         const rec = { t, km, liters, price, total: total || (liters && price ? +(liters * price).toFixed(2) : 0), full: $('fuFull').checked, station: $('fuS').value.trim() };
         c.fuel = c.fuel || [];
         const before = statusMap(c), prevKm = currentKm(c);

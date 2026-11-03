@@ -10,10 +10,11 @@ tap_text() {  # tap the first UI element whose text/content-desc matches $1
   adb shell input tap $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )); sleep 3; echo "TAPPED: $1"
 }
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb shell pm grant com.dijaedadula.fitdad android.permission.POST_NOTIFICATIONS
 adb shell wm size | tee smoke/size.txt
 adb logcat -c
 adb shell am start -n com.dijaedadula.fitdad/.MainActivity
-sleep 10
+sleep 20
 adb exec-out screencap -p > smoke/01-launch.png
 tap_text "Allow" | tee -a smoke/steps.txt
 adb exec-out screencap -p > smoke/02-after-permission.png

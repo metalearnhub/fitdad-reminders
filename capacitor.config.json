@@ -1,6 +1,6 @@
 {
   "appId": "com.dijaedadula.fitdad",
-  "appName": "FitDad",
+  "appName": "Upkeep",
   "webDir": "www",
   "plugins": {
     "LocalNotifications": {

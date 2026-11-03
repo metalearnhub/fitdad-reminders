@@ -2,7 +2,7 @@
   "name": "fitdad-reminders",
   "version": "0.1.0",
   "private": true,
-  "description": "FitDad: stand-up and water reminders for busy dads (car maintenance next).",
+  "description": "Upkeep: customizable reminders for busy parents — wellness first, car and home upkeep next.",
   "scripts": {
     "sync": "npx cap sync android"
   },

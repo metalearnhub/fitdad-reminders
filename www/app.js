@@ -1,4 +1,4 @@
-/* FitDad — wellness reminders engine
+/* Upkeep — wellness reminders engine (formerly FitDad)
  * Uses Capacitor's native LocalNotifications (exact alarms) so reminders fire
  * with the app closed and the phone locked. Falls back to a no-op in a browser.
  */
@@ -12,7 +12,7 @@
       b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99;background:#7f1d1d;color:#fff;font:12px monospace;padding:8px;max-height:30vh;overflow:auto;pointer-events:none';
       document.body.appendChild(b);
     }
-    b.textContent = 'FitDad error: ' + msg;
+    b.textContent = 'Upkeep error: ' + msg;
   }
   window.addEventListener('error', (e) => showError(e.message));
   window.addEventListener('unhandledrejection', (e) => showError(String(e.reason && e.reason.message || e.reason)));
@@ -822,7 +822,7 @@
     const restoreFrom = async (text) => {
       try {
         const data = JSON.parse(String(text).trim());
-        if (data.app !== 'fitdad' || !data.days) throw new Error('not a FitDad backup');
+        if (data.app !== 'fitdad' || !data.days) throw new Error('not an Upkeep backup');
         const n = Object.keys(data.days).length;
         if (!confirm(`Restore backup from ${new Date(data.at).toLocaleString()} (${n} day${n === 1 ? '' : 's'} of history)? This replaces the data on this phone.`)) return;
         settings = { ...DEFAULTS, ...(data.settings || {}) }; days = data.days;
@@ -830,7 +830,7 @@
       } catch (e) { toast('Invalid backup: ' + e.message); }
     };
     $('backupDownload').onclick = async () => {
-      const name = `fitdad-backup-${dayKey()}.json`;
+      const name = `upkeep-backup-${dayKey()}.json`;
       if (isNative) {
         try {
           const r = await Widget.exportBackup({ data: backupJSON(), filename: name });

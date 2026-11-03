@@ -38,18 +38,18 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p out
-          cp android/app/build/outputs/apk/debug/app-debug.apk out/FitDad-${{ github.run_number }}.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/Upkeep-${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FitDad-apk
+          name: Upkeep-apk
           path: out/*.apk
 
       - name: Publish to Releases (easy phone download)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: FitDad build ${{ github.run_number }}
-          body: Install FitDad-${{ github.run_number }}.apk on your Android phone.
+          name: Upkeep build ${{ github.run_number }}
+          body: Install Upkeep-${{ github.run_number }}.apk on your Android phone.
           files: out/*.apk
           make_latest: true

@@ -195,7 +195,7 @@ public class FitDadWidget extends AppWidgetProvider {
             v.setTextViewText(R.id.w_btn_main, idle ? "Start" : "Open");
             v.setOnClickPendingIntent(R.id.w_btn_main, openApp(ctx, idle ? "fitdad://start" : "fitdad://today", 3));
         } catch (Exception e) {
-            v.setTextViewText(R.id.w_status, "FitDad");
+            v.setTextViewText(R.id.w_status, "Upkeep");
         }
         v.setOnClickPendingIntent(R.id.w_btn_water, broadcast(ctx, ACTION_WATER, 1));
         v.setOnClickPendingIntent(R.id.w_btn_stand, broadcast(ctx, ACTION_STAND, 2));

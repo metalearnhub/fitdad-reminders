@@ -174,3 +174,12 @@ table.lb tbody tr { cursor: pointer; }
 .car-alert { cursor: pointer; border-color: rgba(245,158,11,.5); }
 .car-alert.overdue { border-color: rgba(248,113,113,.5); }
 .good-c { color: var(--stand); }
+
+.calc { margin-top: 6px; }
+.calc input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 14px; font-size: 26px; font-weight: 800; text-align: right; }
+.calc-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.calc-keys button { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 14px; padding: 14px 0; font-size: 22px; font-weight: 700; }
+.calc-keys button:active { background: var(--line); }
+.calc-keys button.op { color: var(--amber); }
+.calc-chips { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+.calc-result { margin-top: 12px; font-size: 16px; min-height: 22px; }

@@ -348,20 +348,63 @@ window.UpkeepCar = function (api) {
     });
   }
 
+  // "12+35+8" → 55 ; plain numbers pass through
+  const sumExpr = (v) => String(v || '').replace(/[^0-9+.]/g, '').split('+').reduce((a, x) => a + (parseFloat(x) || 0), 0);
+
+  // Odometer calculator: add km driven (trip) or type the new reading
   function odoSheet(c) {
+    const base = currentKm(c);
+    let mode = base ? 'trip' : 'reading';
     sheet(`
       <div class="sheet-icon">🧮</div><h2>Update odometer</h2>
-      <p class="muted">Last: ${c.odo.length ? fmtKm(currentKm(c)) + ' on ' + fmtDate(c.odo[c.odo.length - 1].t) : 'none yet'}</p>
-      <div class="form"><label>Current km<input id="odoKm" type="number" inputmode="numeric" value="${c.odo.length ? currentKm(c) : ''}" /></label></div>
-      <div class="sheet-btns"><button class="btn primary" id="odoSave">Save</button><button class="btn ghost" id="odoCancel">Cancel</button></div>`, () => {
+      <p class="muted">Last: ${c.odo.length ? fmtKm(base) + ' on ' + fmtDate(c.odo[c.odo.length - 1].t) : 'none yet'}</p>
+      <div class="seg seg-wide" style="margin:8px 0">
+        <button class="chip" data-om="trip">➕ Add km driven</button>
+        <button class="chip" data-om="reading">🔢 New reading</button>
+      </div>
+      <div class="calc">
+        <input id="odoIn" readonly autocomplete="off" />
+        <div class="calc-keys" id="odoKeys">
+          ${[7, 8, 9, 4, 5, 6, 1, 2, 3].map((k) => `<button data-k="${k}">${k}</button>`).join('')}
+          <button data-k="+" class="op">+</button><button data-k="0">0</button><button data-k="del" class="op">⌫</button>
+        </div>
+        <div class="calc-chips" id="odoChips">${[5, 10, 20, 50, 100].map((n) => `<button class="chip" data-add="${n}">+${n}</button>`).join('')}</div>
+        <div class="calc-result" id="odoRes"></div>
+      </div>
+      <div class="sheet-btns"><button class="btn primary" id="odoSave">Save</button><button class="btn ghost" id="odoCancel">Cancel</button></div>`, (body) => {
+      const inp = $('odoIn');
+      const result = () => (mode === 'trip' ? base + sumExpr(inp.value) : Math.round(sumExpr(inp.value)));
+      function paint() {
+        body.querySelectorAll('[data-om]').forEach((b) => b.classList.toggle('on', b.dataset.om === mode));
+        inp.placeholder = mode === 'trip' ? 'km driven, e.g. 42 or 18+24' : 'e.g. ' + (base || 45200);
+        $('odoChips').style.display = mode === 'trip' ? '' : 'none';
+        const r = result(), trip = sumExpr(inp.value);
+        $('odoRes').innerHTML = !inp.value ? '&nbsp;'
+          : mode === 'trip' ? `${fmtKm(base)} <b>+ ${trip.toLocaleString()}</b> = <b class="good-c">${fmtKm(r)}</b>`
+          : r <= base && base ? `<span class="miss">Must be higher than ${fmtKm(base)}</span>` : `New reading <b class="good-c">${fmtKm(r)}</b>${base ? ` · <b>+${(r - base).toLocaleString()} km</b> driven` : ''}`;
+      }
+      body.querySelectorAll('[data-om]').forEach((b) => { b.onclick = () => { mode = b.dataset.om; inp.value = ''; paint(); }; });
+      body.querySelectorAll('[data-k]').forEach((b) => {
+        b.onclick = () => {
+          const k = b.dataset.k;
+          if (k === 'del') inp.value = inp.value.slice(0, -1);
+          else if (k === '+') { if (mode === 'trip' && inp.value && !inp.value.endsWith('+')) inp.value += '+'; }
+          else inp.value += k;
+          paint();
+        };
+      });
+      body.querySelectorAll('[data-add]').forEach((b) => { b.onclick = () => { const v = inp.value; inp.value = v ? (v.endsWith('+') ? v : v + '+') + b.dataset.add : b.dataset.add; paint(); }; });
+      inp.oninput = paint;
+      paint();
       $('odoCancel').onclick = closeSheet;
       $('odoSave').onclick = async () => {
+        if (!inp.value) { toast(mode === 'trip' ? 'Enter the km you drove' : 'Enter the odometer reading'); return; }
         const before = statusMap(c), prevKm = currentKm(c);
-        if (addOdo(c, $('odoKm').value)) { closeSheet(); await commitWithOdoCheck(c, before, prevKm, 'Odometer updated'); }
+        if (addOdo(c, result())) { closeSheet(); await commitWithOdoCheck(c, before, prevKm, `Odometer ${fmtKm(result())}`); }
       };
-      setTimeout(() => { if ($('odoKm')) $('odoKm').select(); }, 50);
     });
   }
+
 
   // Checklist of components to track. New car → recommended set pre-checked; existing car → only what's missing.
   function addStarter(c, missingOnly) {
@@ -696,6 +739,7 @@ window.UpkeepCar = function (api) {
         <div class="row2">
           <label>Date<input id="fuDate" type="date" value="${isoDay(f ? f.t : Date.now())}" /></label>
           <label>Odometer (km)<input id="fuKm" type="number" inputmode="numeric" value="${f ? f.km : ''}" placeholder="${lastKm ? 'last ' + lastKm : ''}" /></label>
+          ${!f && lastKm ? '<label>or km driven<input id="fuTrip" inputmode="decimal" placeholder="e.g. 420" /></label>' : ''}
         </div>
         <div class="row2">
           <label>Liters<input id="fuL" type="number" inputmode="decimal" step="0.01" value="${f && f.liters ? f.liters : ''}" /></label>
@@ -724,6 +768,10 @@ window.UpkeepCar = function (api) {
         else if (keep.has('P') && keep.has('T') && p && t) L.value = (t / p).toFixed(2);
       }
       L.oninput = () => touch('L'); P.oninput = () => touch('P'); T.oninput = () => touch('T');
+      if ($('fuTrip')) {
+        $('fuTrip').oninput = () => { const t = sumExpr($('fuTrip').value); $('fuKm').value = t ? lastKm + Math.round(t) : ''; };
+        $('fuKm').addEventListener('input', () => { $('fuTrip').value = ''; });
+      }
       $('fuCancel').onclick = closeSheet;
       $('fuSave').onclick = async () => {
         const km = Math.round(Number($('fuKm').value));

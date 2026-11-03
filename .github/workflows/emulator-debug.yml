@@ -2,8 +2,9 @@ name: Emulator smoke test
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   smoke:
@@ -33,3 +34,11 @@ jobs:
         with:
           name: smoke-results
           path: smoke/
+      - name: Publish results to smoke-results branch
+        if: always()
+        run: |
+          cd smoke
+          git init -q && git checkout -q -b smoke-results
+          git -c user.name=ci -c user.email=ci@local add -A
+          git -c user.name=ci -c user.email=ci@local commit -qm "smoke ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" smoke-results

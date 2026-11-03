@@ -670,6 +670,21 @@
     $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); };
     $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); };
     $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); };
+    $('backupCopy').onclick = async () => {
+      const txt = JSON.stringify({ app: 'fitdad', v: 1, at: new Date().toISOString(), settings, days });
+      $('backupText').value = txt;
+      try { await navigator.clipboard.writeText(txt); toast('Backup copied — paste it somewhere safe'); }
+      catch (_) { $('backupText').select(); toast('Backup ready — long-press the text to copy'); }
+    };
+    $('backupRestore').onclick = async () => {
+      try {
+        const data = JSON.parse($('backupText').value.trim());
+        if (data.app !== 'fitdad' || !data.days) throw new Error('not a FitDad backup');
+        if (!confirm(`Restore backup from ${new Date(data.at).toLocaleString()}? This replaces current data.`)) return;
+        settings = { ...DEFAULTS, ...(data.settings || {}) }; days = data.days;
+        await save(); render(); renderSettings(); await reschedule(); toast('Restored');
+      } catch (e) { toast('Invalid backup: ' + e.message); }
+    };
     $('sheet').onclick = (e) => { if (e.target.id === 'sheet') closeSheet(); };
     $('saveSettings').onclick = async () => { readSettings(); await save(); render(); await reschedule(); toast('Saved — reminders updated'); };
     $('testAlarm').onclick = () => testNotif('stand');

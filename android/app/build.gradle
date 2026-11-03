@@ -16,8 +16,21 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Fixed signing key so every CI build can update the installed app without wiping data
+    signingConfigs {
+        fitdad {
+            storeFile file('fitdad.keystore')
+            storePassword 'fitdad123'
+            keyAlias 'fitdad'
+            keyPassword 'fitdad123'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.fitdad
+        }
         release {
+            signingConfig signingConfigs.fitdad
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -125,6 +125,13 @@
       </div>
     </section>
 
+    <!-- STATS -->
+    <section class="view" id="view-stats">
+      <div class="card"><h2>Today</h2><div id="statToday"></div></div>
+      <div class="card"><h2>Today's log</h2><ul class="timeline" id="statTimeline"></ul></div>
+      <div class="card"><h2>This week</h2><div id="statWeek"></div></div>
+    </section>
+
     <!-- CAR -->
     <section class="view" id="view-car">
       <div class="card">
@@ -136,10 +143,12 @@
 
   <nav class="tabs">
     <button class="tab active" data-view="today">Today</button>
+    <button class="tab" data-view="stats">Stats</button>
     <button class="tab" data-view="car">Car</button>
     <button class="tab" data-view="settings">Settings</button>
   </nav>
 
+  <div class="sheet" id="sheet"><div class="sheet-card" id="sheetBody"></div></div>
   <div class="toast" id="toast"></div>
   <script src="app.js"></script>
 </body>

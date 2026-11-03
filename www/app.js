@@ -74,7 +74,10 @@
 
   function rec(k) {
     if (!days[k]) days[k] = { status: 'idle', startedAt: null, pausedAt: null, pausedMs: 0, water: 0, stands: 0 };
-    return days[k];
+    const r = days[k];
+    if (!r.log) r.log = [];            // [{t, k:'water'|'stand'|'skip_w'|'skip_s'|'snooze_w'|'snooze_s', src:'notif'|'app', ml?}]
+    if (!r.segments) r.segments = [];  // finished work segments [[start, end]]
+    return r;
   }
   function today() { return rec(dayKey()); }
 
@@ -160,31 +163,70 @@
     }
   }
 
+  // ---------- Confirmations (single source of truth for analytics) ----------
+  function logEvent(r, k, src, ml) { r.log.push(ml ? { t: Date.now(), k, src, ml } : { t: Date.now(), k, src }); }
+  function confirmWater(src) {
+    const r = waterRec(); r.water += settings.glass; logEvent(r, 'water', src, settings.glass);
+    toast(`+${settings.glass} ml logged · ${liters(Math.max(0, settings.waterGoal - r.water))} to go`);
+  }
+  function undoWater() {
+    const r = waterRec();
+    for (let i = r.log.length - 1; i >= 0; i--) if (r.log[i].k === 'water') { r.water = Math.max(0, r.water - r.log[i].ml); r.log.splice(i, 1); return; }
+    r.water = Math.max(0, r.water - settings.glass);
+  }
+  function confirmStand(src) { const r = today(); r.stands++; logEvent(r, 'stand', src); toast('Nice. Stand-up logged.'); }
+  function skip(kind, src) { logEvent(kind === 'stand' ? today() : waterRec(), kind === 'stand' ? 'skip_s' : 'skip_w', src); toast('Skipped'); }
+
+  // In-app confirm sheet — opening a notification lands here, so tap = same choices as the buttons
+  function openSheet(kind) {
+    const sheet = $('sheet'), body = $('sheetBody');
+    const opts = kind === 'stand'
+      ? { icon: '🧍', title: 'Did you stand up?', sub: 'Stand, stretch, walk for 2 minutes — take pressure off your back.',
+          btns: [['Yes, I stood up', 'stand', () => confirmStand('notif')], ['Snooze 5 min', 'ghost', () => snooze('stand', 5)], ['Skip', 'ghost', () => skip('stand', 'notif')]] }
+      : kind === 'nudge'
+        ? { icon: '☀️', title: 'Start your wellness day?', sub: 'Turns on stand-up reminders for your work session.',
+            btns: [['Start now', 'primary', startSession], ['Later', 'ghost', () => {}], ['Day off', 'ghost', dayOff]] }
+        : { icon: '💧', title: `Drink a ${settings.glass} ml glass?`, sub: `${liters(Math.max(0, settings.waterGoal - waterRec().water))} left to reach ${liters(settings.waterGoal)}.`,
+            btns: [['Drank it', 'water', () => confirmWater('notif')], ['Snooze 10 min', 'ghost', () => snooze('water', 10)], ['Skip', 'ghost', () => skip('water', 'notif')]] };
+    body.innerHTML = `<div class="sheet-icon">${opts.icon}</div><h2>${opts.title}</h2><p class="muted">${opts.sub}</p><div class="sheet-btns"></div>`;
+    const wrap = body.querySelector('.sheet-btns');
+    opts.btns.forEach(([label, cls, fn]) => {
+      const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label;
+      b.onclick = async () => { closeSheet(); await fn(); await save(); render(); await reschedule(); };
+      wrap.appendChild(b);
+    });
+    sheet.classList.add('show');
+  }
+  function closeSheet() { $('sheet').classList.remove('show'); }
+
   // ---------- Actions from notifications ----------
   async function handleAction(ev) {
     const n = ev.notification || {};
     const kind = (n.extra && n.extra.kind) || '';
     const a = ev.actionId;
-    const t = today();
+    const k = kind === 'check' ? 'water' : kind;
 
-    if (kind === 'stand') {
+    // Tapping the notification itself opens the app on a confirm sheet with the same choices
+    if (a === 'tap') { if (['stand', 'water', 'nudge'].includes(k)) openSheet(k); return; }
+
+    if (k === 'stand') {
       if (a === 'snooze') await snooze('stand', 5);
-      else if (a === 'done') { t.stands++; toast('Nice. Stand-up logged.'); }
-    } else if (kind === 'water' || kind === 'check') {
+      else if (a === 'done') confirmStand('notif');
+    } else if (k === 'water') {
       if (a === 'snooze') await snooze('water', 10);
-      else if (a === 'drank') { waterRec().water += settings.glass; toast(`+${settings.glass} ml logged`); }
-    } else if (kind === 'nudge') {
+      else if (a === 'drank') confirmWater('notif');
+    } else if (k === 'nudge') {
       if (a === 'start') startSession();
       else if (a === 'dayoff') dayOff();
-      // 'later' or tap → the next pre-scheduled nudge will still ring
     }
     await save(); render(); await reschedule();
   }
 
   async function snooze(kind, minutes) {
-    if (!isNative) return;
+    if (!isNative) { toast(`Snoozed ${minutes} min`); return; }
     const at = new Date(Date.now() + minutes * 60000);
     const isStand = kind === 'stand';
+    logEvent(isStand ? today() : waterRec(), isStand ? 'snooze_s' : 'snooze_w', 'notif');
     await LN.schedule({ notifications: [{
       id: ID.SNOOZE + Math.floor(Math.random() * 900),
       title: isStand ? 'Stand up now 🧍' : 'Drink water 💧',
@@ -205,11 +247,13 @@
     if (!t.startedAt || t.status === 'ended' || t.status === 'off' || t.status === 'idle') {
       t.startedAt = Date.now(); t.pausedMs = 0; t.pausedAt = null;
     }
+    if (t.status !== 'active') t.segStart = Date.now();
     t.status = 'active';
     toast('Day started — reminders on');
   }
-  function pauseSession() { const t = today(); t.status = 'paused'; t.pausedAt = Date.now(); toast('Paused'); }
-  function endSession() { const t = today(); t.status = 'ended'; t.pausedAt = null; toast('Day ended. Good work.'); }
+  function closeSegment(t, at) { if (t.segStart) { t.segments.push([t.segStart, at]); t.segStart = null; } }
+  function pauseSession() { const t = today(); closeSegment(t, Date.now()); t.status = 'paused'; t.pausedAt = Date.now(); toast('Paused'); }
+  function endSession() { const t = today(); closeSegment(t, Date.now()); t.status = 'ended'; t.pausedAt = null; toast('Day ended. Good work.'); }
   function dayOff() { const t = today(); t.status = 'off'; toast('Day off — see you tomorrow'); }
 
   function sessionEnd(t) {
@@ -217,7 +261,9 @@
   }
   function autoEndIfNeeded() {
     const t = today();
-    if (t.status === 'active' && Date.now() > sessionEnd(t)) t.status = 'ended';
+    if (t.status === 'active' && Date.now() > sessionEnd(t)) { closeSegment(t, sessionEnd(t)); t.status = 'ended'; }
+    // close a segment left open from a previous day
+    Object.keys(days).forEach((k) => { const r = days[k]; if (k !== dayKey() && r.segStart) { closeSegment(rec(k), Math.min(Date.now(), r.segStart + settings.maxHours * 3600000)); if (r.status === 'active') r.status = 'ended'; } });
   }
 
   // ---------- Scheduling ----------
@@ -338,6 +384,108 @@
     toast('Test alarm in 10 seconds — lock your phone');
   }
 
+
+  // ---------- Analytics ----------
+  const fmtDur = (ms) => { const m = Math.round(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}h ${pad(m % 60)}m` : `${m}m`; };
+  function dayStats(key) {
+    const r = days[key] || { water: 0, stands: 0, log: [], segments: [] };
+    const log = r.log || [];
+    const segs = (r.segments || []).slice();
+    if (r.segStart && key === dayKey()) segs.push([r.segStart, Date.now()]);
+    const standTimes = log.filter((e) => e.k === 'stand').map((e) => e.t).sort((a, b) => a - b);
+    let workMs = 0, expected = 0, longest = 0;
+    segs.forEach(([a, b]) => {
+      workMs += b - a;
+      expected += Math.floor((b - a) / (settings.standEvery * 60000));
+      let last = a;
+      standTimes.filter((t) => t > a && t < b).forEach((t) => { longest = Math.max(longest, t - last); last = t; });
+      longest = Math.max(longest, b - last);
+    });
+    const water = r.water || 0;
+    return {
+      key, water, goalMet: water >= settings.waterGoal, glasses: log.filter((e) => e.k === 'water').length,
+      stands: r.stands || 0, expected, workMs, longest,
+      snoozes: log.filter((e) => e.k.startsWith('snooze')).length,
+      skips: log.filter((e) => e.k.startsWith('skip')).length,
+      fromNotif: log.filter((e) => (e.k === 'water' || e.k === 'stand') && e.src === 'notif').length,
+      log,
+    };
+  }
+  function lastNDays(n, offset = 0) {
+    const out = [];
+    for (let i = n - 1 + offset; i >= offset; i--) { const d = new Date(); d.setDate(d.getDate() - i); out.push({ date: d, s: dayStats(dayKey(d)) }); }
+    return out;
+  }
+  function summarize(list) {
+    const n = list.length, sum = (f) => list.reduce((a, x) => a + f(x.s), 0);
+    const worked = list.filter((x) => x.s.workMs > 0);
+    return {
+      avgWater: sum((s) => s.water) / n, goalDays: list.filter((x) => x.s.goalMet).length,
+      stands: sum((s) => s.stands), expected: sum((s) => s.expected),
+      avgLongest: worked.length ? worked.reduce((a, x) => a + x.s.longest, 0) / worked.length : 0,
+      work: sum((s) => s.workMs), snoozes: sum((s) => s.snoozes), skips: sum((s) => s.skips),
+    };
+  }
+  function streak() {
+    let n = 0; const d = new Date();
+    if (!dayStats(dayKey(d)).goalMet) d.setDate(d.getDate() - 1); // today still in progress
+    while (dayStats(dayKey(d)).goalMet) { n++; d.setDate(d.getDate() - 1); }
+    return n;
+  }
+  function bars(list, val, goal, color, fmt) {
+    const W = 320, H = 144, pb = 20, pt = 16, max = Math.max(goal || 0, ...list.map((x) => val(x.s)), 1);
+    const bw = W / list.length;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart">`;
+    if (goal) { const gy = pt + (H - pb - pt) * (1 - goal / max); svg += `<line x1="0" x2="${W}" y1="${gy}" y2="${gy}" class="goal-line"/>`; }
+    list.forEach((x, i) => {
+      const v = val(x.s), h = (H - pb - pt) * (v / max), xx = i * bw + bw * 0.2;
+      svg += `<rect x="${xx}" y="${H - pb - h}" width="${bw * 0.6}" height="${Math.max(h, 1)}" rx="4" fill="${color}" opacity="${v ? 1 : .25}"/>`;
+      if (v) svg += `<text x="${xx + bw * 0.3}" y="${H - pb - h - 4}" class="bar-val">${fmt(v)}</text>`;
+      svg += `<text x="${xx + bw * 0.3}" y="${H - 5}" class="bar-lbl">${x.date.toLocaleDateString([], { weekday: 'narrow' })}</text>`;
+    });
+    return svg + '</svg>';
+  }
+  const delta = (a, b, unit, dec = 0) => {
+    if (!b) return '';
+    const d = a - b; const sign = d > 0 ? '▲' : d < 0 ? '▼' : '＝';
+    return `<span class="delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${sign} ${Math.abs(d).toFixed(dec)}${unit} vs last week</span>`;
+  };
+
+  function renderStats() {
+    const t = dayStats(dayKey());
+    const tw = dayStats(currentWindow().key);
+    const pctStand = t.expected ? Math.round(100 * Math.min(1, t.stands / t.expected)) : null;
+    $('statToday').innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><div class="kv water-c">${liters(tw.water)}</div><div class="kl">of ${liters(settings.waterGoal)} · ${tw.glasses} glasses</div></div>
+        <div class="kpi"><div class="kv stand-c">${t.stands}${t.expected ? '/' + t.expected : ''}</div><div class="kl">stand-ups${pctStand !== null ? ' · ' + pctStand + '%' : ''}</div></div>
+        <div class="kpi"><div class="kv">${t.workMs ? fmtDur(t.longest) : '—'}</div><div class="kl">longest sitting stretch</div></div>
+        <div class="kpi"><div class="kv">${t.workMs ? fmtDur(t.workMs) : '—'}</div><div class="kl">work time tracked</div></div>
+      </div>
+      <p class="muted small">${t.fromNotif + tw.log.filter((e) => e.k === 'water' && e.src === 'notif' && tw.key !== t.key).length} confirmed from notifications · ${t.snoozes + (tw.key !== t.key ? tw.snoozes : 0)} snoozed · ${t.skips + (tw.key !== t.key ? tw.skips : 0)} skipped</p>`;
+    const names = { water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
+    const evs = (tw.key === t.key ? t.log : tw.log.concat(t.log)).slice().sort((a, b) => b.t - a.t).slice(0, 30);
+    $('statTimeline').innerHTML = evs.length
+      ? evs.map((e) => `<li><span>${names[e.k] || e.k}</span><span class="muted">${fmtTime(new Date(e.t))}${e.src === 'notif' ? ' · 🔔' : ''}</span></li>`).join('')
+      : '<li class="muted">Nothing logged yet today.</li>';
+
+    const wk = lastNDays(7), prev = lastNDays(7, 7);
+    const a = summarize(wk), b = summarize(prev);
+    const hasPrev = prev.some((x) => x.s.water || x.s.stands);
+    $('statWeek').innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><div class="kv water-c">${liters(a.avgWater)}</div><div class="kl">avg water / day</div>${hasPrev ? delta(a.avgWater / 1000, b.avgWater / 1000, ' L', 2) : ''}</div>
+        <div class="kpi"><div class="kv">${a.goalDays}/7</div><div class="kl">days goal met · streak ${streak()}</div>${hasPrev ? delta(a.goalDays, b.goalDays, ' days') : ''}</div>
+        <div class="kpi"><div class="kv stand-c">${a.stands}${a.expected ? '/' + a.expected : ''}</div><div class="kl">stand-ups${a.expected ? ' · ' + Math.round(100 * Math.min(1, a.stands / a.expected)) + '%' : ''}</div>${hasPrev ? delta(a.stands, b.stands, '') : ''}</div>
+        <div class="kpi"><div class="kv">${a.avgLongest ? fmtDur(a.avgLongest) : '—'}</div><div class="kl">avg longest sit</div></div>
+      </div>
+      <h3>Water (L) — dashed line = goal</h3>
+      ${bars(wk, (s) => s.water / 1000, settings.waterGoal / 1000, 'var(--water)', (v) => v.toFixed(1))}
+      <h3>Stand-ups</h3>
+      ${bars(wk, (s) => s.stands, 0, 'var(--stand)', (v) => v)}
+      <p class="muted small">Work time this week: ${fmtDur(a.work)} · snoozes ${a.snoozes} · skips ${a.skips}</p>`;
+  }
+
   // ---------- Rendering ----------
   function updateNextLabel(list) {
     const now = Date.now();
@@ -415,6 +563,7 @@
     // stand
     $('standCount').textContent = t.stands;
     $('standEveryLabel').textContent = `Every ${settings.standEvery} min`;
+    if ($('view-stats').classList.contains('active')) renderStats();
   }
 
   function renderSettings() {
@@ -515,11 +664,13 @@
         document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === tab));
         document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
         if (tab.dataset.view === 'settings') renderSettings();
+        if (tab.dataset.view === 'stats') renderStats();
       };
     });
-    $('waterPlus').onclick = async () => { waterRec().water += settings.glass; await save(); render(); await reschedule(); };
-    $('waterMinus').onclick = async () => { const t = waterRec(); t.water = Math.max(0, t.water - settings.glass); await save(); render(); await reschedule(); };
-    $('standPlus').onclick = async () => { today().stands++; await save(); render(); toast('Stand-up logged'); };
+    $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); };
+    $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); };
+    $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); };
+    $('sheet').onclick = (e) => { if (e.target.id === 'sheet') closeSheet(); };
     $('saveSettings').onclick = async () => { readSettings(); await save(); render(); await reschedule(); toast('Saved — reminders updated'); };
     $('testAlarm').onclick = () => testNotif('stand');
     $('testWater').onclick = () => testNotif('water');
@@ -541,6 +692,7 @@
     setInterval(() => { autoEndIfNeeded(); render(); updateNextLabel(buildNotifications()); }, 60000);
   }
 
+  if (!isNative) window.__fitdad = { openSheet };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 })();

@@ -66,11 +66,21 @@ window.UpkeepCar = function (api) {
   // ---------- Odometer ----------
   function currentKm(c) { return c.odo.reduce((m, o) => Math.max(m, o.km), 0); }
   // average km/day from the odometer log (needs ≥2 readings ≥3 days apart)
+  // Every dated km reading we know of: odometer updates, fill-ups and service logs
+  function kmPoints(c) {
+    const pts = [...c.odo, ...(c.fuel || []).map((f) => ({ t: f.t, km: f.km })),
+      ...data().history.filter((h) => h.carId === c.id && h.km).map((h) => ({ t: h.t, km: h.km }))];
+    return pts.filter((p) => p.km > 0).sort((a, b) => a.t - b.t);
+  }
+  // Average km/day over the last ~90 days of readings (falls back to the full history)
   function kmPerDay(c) {
-    if (c.odo.length < 2) return null;
-    const a = c.odo[0], b = c.odo[c.odo.length - 1];
+    const pts = kmPoints(c);
+    if (pts.length < 2) return null;
+    const b = pts[pts.length - 1];
+    const recent = pts.filter((p) => p.t >= b.t - 90 * DAY);
+    const a = (recent.length >= 2 && (b.t - recent[0].t) / DAY >= 3) ? recent[0] : pts[0];
     const days = (b.t - a.t) / DAY;
-    if (days < 3 || b.km <= a.km) return null;
+    if (days < 1 || b.km <= a.km) return null;
     return (b.km - a.km) / days;
   }
   function addOdo(c, km, t = Date.now()) {
@@ -229,7 +239,12 @@ window.UpkeepCar = function (api) {
     const its = itemsOf(c).map((i) => ({ i, info: dueInfo(i, c) }))
       .sort((a, b) => ({ overdue: 0, soon: 1, ok: 2 }[a.info.status] - { overdue: 0, soon: 1, ok: 2 }[b.info.status]) || ((a.info.effectiveAt || 9e15) - (b.info.effectiveAt || 9e15)));
     const yr = new Date().getFullYear();
-    const spent = d.history.filter((h) => h.carId === c.id && new Date(h.t).getFullYear() === yr).reduce((s, h) => s + h.cost, 0);
+    const svc = d.history.filter((h) => h.carId === c.id && new Date(h.t).getFullYear() === yr).reduce((s, h) => s + (h.cost || 0), 0);
+    const fuelSpend = (c.fuel || []).filter((f) => new Date(f.t).getFullYear() === yr).reduce((s, f) => s + (f.total || 0), 0);
+    const spent = svc + fuelSpend;
+    const next = its.filter((x) => x.info.effectiveAt != null || x.info.kmLeft != null)
+      .sort((a, b) => ({ overdue: 0, soon: 1, ok: 2 }[a.info.status] - { overdue: 0, soon: 1, ok: 2 }[b.info.status]) || wear(b.i, c) - wear(a.i, c))[0];
+    const pts = kmPoints(c);
     const counts = { overdue: its.filter((x) => x.info.status === 'overdue').length, soon: its.filter((x) => x.info.status === 'soon').length };
     el.innerHTML = `
       ${d.cars.length > 1 ? `<div class="chips">${d.cars.map((x) => `<button class="chip ${x.id === c.id ? 'on' : ''}" data-car="${x.id}">${esc(x.name)}</button>`).join('')}</div>` : ''}
@@ -239,9 +254,9 @@ window.UpkeepCar = function (api) {
         <p class="muted" style="margin-top:0">${esc(c.plate || '')}</p>
         <div class="kpis">
           <div class="kpi"><div class="kv">${fmtKm(currentKm(c))}</div><div class="kl">odometer · ${c.odo.length ? 'updated ' + fmtDate(c.odo[c.odo.length - 1].t) : 'not set'}</div></div>
-          <div class="kpi"><div class="kv">${rate ? Math.round(rate) + ' km' : '—'}</div><div class="kl">avg per day${rate ? '' : ' (log km twice, 3+ days apart)'}</div></div>
-          <div class="kpi"><div class="kv ${counts.overdue ? 'miss' : ''}">${counts.overdue}</div><div class="kl">overdue · ${counts.soon} due soon</div></div>
-          <div class="kpi"><div class="kv">${peso(spent)}</div><div class="kl">spent in ${yr}</div></div>
+          <div class="kpi"><div class="kv">${rate ? Math.round(rate) + ' km' : '—'}</div><div class="kl">${rate ? `avg per day · ~${fmtKm(rate * 30)}/mo` : pts.length >= 2 ? 'avg per day (needs readings on different days)' : 'avg per day (log km or a fill-up again)'}</div></div>
+          <div class="kpi"><div class="kv ${next && next.info.status === 'overdue' ? 'miss' : ''}" style="font-size:16px">${next ? (next.i.icon || '🔧') + ' ' + esc(next.i.name) : '—'}</div><div class="kl">${next ? 'next: ' + dueText(next.info).replace(/^Due /, '') : 'no parts tracked yet'}${counts.overdue || counts.soon ? ` · ${counts.overdue} overdue, ${counts.soon} soon` : ''}</div></div>
+          <div class="kpi"><div class="kv">${peso(spent)}</div><div class="kl">spent in ${yr} · fuel ${peso(fuelSpend)} · service ${peso(svc)}</div></div>
         </div>
         <div class="btn-row" style="margin-top:4px">
           <button class="btn ghost" id="carOdo">Update km</button>

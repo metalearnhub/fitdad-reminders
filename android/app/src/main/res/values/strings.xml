@@ -1,7 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Upkeep</string>
-    <string name="title_activity_main">Upkeep</string>
     <string name="package_name">com.dijaedadula.fitdad</string>
     <string name="custom_url_scheme">com.dijaedadula.fitdad</string>
     <string name="widget_desc">Water and stand-up progress with one-tap logging</string>

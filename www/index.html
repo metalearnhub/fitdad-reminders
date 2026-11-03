@@ -131,12 +131,20 @@
       </div>
       <div class="card">
         <h2>Backup & restore</h2>
-        <p class="muted small">Copy a backup before reinstalling. Paste it back here to restore your history and settings.</p>
-        <textarea id="backupText" rows="4" placeholder="Backup text appears here — or paste one to restore"></textarea>
+        <p class="muted small">Save a backup file (Downloads, Drive…) before reinstalling or switching phones. Upload it later to restore your history and settings.</p>
         <div class="btn-row">
-          <button class="btn ghost" id="backupCopy">Copy backup</button>
-          <button class="btn ghost" id="backupRestore">Restore</button>
+          <button class="btn ghost" id="backupDownload">⬇ Download backup</button>
+          <button class="btn ghost" id="backupUpload">⬆ Upload backup</button>
         </div>
+        <input type="file" id="backupFile" accept=".json,application/json,text/plain" hidden />
+        <details class="small muted paste">
+          <summary>Or copy / paste as text</summary>
+          <textarea id="backupText" rows="4" placeholder="Backup text appears here — or paste one to restore"></textarea>
+          <div class="btn-row">
+            <button class="btn ghost" id="backupCopy">Copy backup</button>
+            <button class="btn ghost" id="backupRestore">Restore</button>
+          </div>
+        </details>
       </div>
     </section>
 

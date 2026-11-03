@@ -42,6 +42,7 @@
           </div>
         </div>
         <p class="muted small center" id="waterPlan"></p>
+        <button class="linkbtn" id="bedEdit">🌙 <span id="bedLabel"></span> · change</button>
         <div class="btn-row">
           <button class="btn ghost" id="waterMinus" aria-label="Undo one glass">−</button>
           <button class="btn water" id="waterPlus">+ Glass</button>
@@ -71,11 +72,9 @@
           <input type="number" id="s-waterGoal" min="1000" max="6000" step="100" /></label>
         <label class="field"><span>Glass size (ml)</span>
           <input type="number" id="s-glass" min="100" max="1000" step="50" /></label>
-        <label class="field"><span>I wake up at</span>
-          <input type="time" id="s-wakeTime" /></label>
-        <div class="field col"><span>Hours awake per day</span>
-          <div class="chips tight" id="s-awake"></div>
-          <span class="muted small" id="s-awakeRange"></span></div>
+        <div class="field col"><span>I usually sleep at</span>
+          <div class="chips tight" id="s-bed"></div>
+          <span class="muted small">Change it for just tonight from the Today screen.</span></div>
         <div class="field"><span>Reminder timing</span>
           <div class="seg">
             <button class="chip" id="s-waterMode-auto">Auto</button>
@@ -87,11 +86,9 @@
       </div>
 
       <div class="card">
-        <h2>Stand-ups & workday</h2>
+        <h2>Stand-ups</h2>
         <label class="field"><span>Stand up every (minutes)</span>
           <input type="number" id="s-standEvery" min="10" max="180" step="5" /></label>
-        <label class="field"><span>Workday length / auto-end (hours)</span>
-          <input type="number" id="s-maxHours" min="2" max="16" step="1" /></label>
       </div>
 
       <div class="card">

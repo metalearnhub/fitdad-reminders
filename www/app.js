@@ -39,17 +39,16 @@
   const DEFAULTS = {
     standEvery: 30,       // minutes
     waterEvery: 60,       // minutes (used when waterMode = 'fixed')
-    waterMode: 'auto',    // 'auto' = spread remaining glasses over the rest of the awake window; 'fixed' = every N minutes
+    waterMode: 'auto',    // 'auto' = spread remaining glasses from now until bedtime; 'fixed' = every N minutes
     waterGoal: 3000,      // ml
     glass: 250,           // ml
-    maxHours: 10,         // auto-end session
     nudgeTime: '09:00',
     nudgeRepeat: 45,      // minutes
     nudgeMax: 4,
     nudgeDays: [0, 1, 2, 3, 4, 5, 6], // Sun..Sat
     checkTime: '16:00',
-    wakeTime: '06:00',    // water reminders run across the awake window
-    awakeHours: 16,       // 14–20
+    bedTime: '23:00',     // planned sleep time — water is spread from now until bedtime
+    lastGlassBefore: 60,  // minutes before bed for the last glass (fewer bathroom trips at night)
   };
 
   let settings = { ...DEFAULTS };
@@ -68,9 +67,6 @@
   const totalGlasses = () => Math.ceil(settings.waterGoal / settings.glass);
   const glassesLeft = (water) => Math.max(0, Math.ceil((settings.waterGoal - water) / settings.glass));
   // planned interval (minutes) for a full day, used for the plan preview
-  const plannedInterval = () => settings.waterMode === 'fixed'
-    ? settings.waterEvery
-    : Math.max(15, Math.floor((settings.awakeHours * 60) / totalGlasses()));
 
   function rec(k) {
     if (!days[k]) days[k] = { status: 'idle', startedAt: null, pausedAt: null, pausedMs: 0, water: 0, stands: 0 };
@@ -79,21 +75,27 @@
     if (!r.segments) r.segments = [];  // finished work segments [[start, end]]
     return r;
   }
-  function today() { return rec(dayKey()); }
+  // A "day" runs from 4 AM to 4 AM, so late nights count toward the day you started
+  const DAY_BOUNDARY_H = 4;
+  const logicalKey = (ts = Date.now()) => dayKey(new Date(ts - DAY_BOUNDARY_H * 3600000));
+  function today() { return rec(logicalKey()); }
 
-  // Awake window for the day that starts on `date`: wake time → wake + awakeHours
-  function windowFor(date) {
-    const start = atTime(date, settings.wakeTime).getTime();
-    return { key: dayKey(date), start, end: start + settings.awakeHours * 3600000 };
+  // Bedtime for a day (per-day override from the Today screen, else the usual one). 12–4 AM = after midnight.
+  function bedtimeFor(key, bedOverride) {
+    const [y, m, d] = key.split('-').map(Number);
+    const base = new Date(y, m - 1, d);
+    let bed = atTime(base, bedOverride || (days[key] && days[key].bedtime) || settings.bedTime).getTime();
+    if (bed <= base.getTime() + DAY_BOUNDARY_H * 3600000) bed += 86400000;
+    return bed;
   }
-  // The water "day" you're in right now (late-night glasses count toward the day you woke up)
-  function currentWindow() {
-    const now = Date.now();
-    const y = new Date(); y.setDate(y.getDate() - 1);
-    const yw = windowFor(y), tw = windowFor(new Date());
-    return (now < tw.start && now < yw.end) ? yw : tw;
+  // Today's water window: from when you started your day (Start / first glass) until 1 h before bed
+  function currentWindow(bedOverride) {
+    const key = logicalKey();
+    const bedAt = bedtimeFor(key, bedOverride);
+    return { key, start: rec(key).dayStart || null, bedAt, end: bedAt - settings.lastGlassBefore * 60000 };
   }
-  function waterRec() { return rec(currentWindow().key); }
+  function markDayStart(r) { if (!r.dayStart) r.dayStart = Date.now(); }
+  function waterRec() { return today(); }
 
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -166,7 +168,7 @@
   // ---------- Confirmations (single source of truth for analytics) ----------
   function logEvent(r, k, src, ml) { r.log.push(ml ? { t: Date.now(), k, src, ml } : { t: Date.now(), k, src }); }
   function confirmWater(src) {
-    const r = waterRec(); r.water += settings.glass; logEvent(r, 'water', src, settings.glass);
+    const r = waterRec(); markDayStart(r); r.water += settings.glass; logEvent(r, 'water', src, settings.glass);
     toast(`+${settings.glass} ml logged · ${liters(Math.max(0, settings.waterGoal - r.water))} to go`);
   }
   function undoWater() {
@@ -196,6 +198,18 @@
       wrap.appendChild(b);
     });
     sheet.classList.add('show');
+  }
+  function openBedSheet() {
+    const r = rec(currentWindow().key);
+    const body = $('sheetBody');
+    body.innerHTML = `<div class="sheet-icon">🌙</div><h2>What time will you sleep tonight?</h2>
+      <p class="muted">Your remaining water is spread from now until 1 hour before bed.</p>
+      <div class="chips center-chips" id="sheetBed"></div>
+      <div class="sheet-btns"><button class="btn ghost" id="sheetBedDefault">Use my usual (${fmtTime(atTime(new Date(), settings.bedTime))})</button></div>`;
+    const pick = async (bt) => { r.bedtime = bt; closeSheet(); await save(); render(); await reschedule(); toast(`Bedtime ${fmtTime(atTime(new Date(), bt))} — water re-planned`); };
+    bedChips($('sheetBed'), r.bedtime || settings.bedTime, pick);
+    $('sheetBedDefault').onclick = async () => { delete r.bedtime; closeSheet(); await save(); render(); await reschedule(); };
+    $('sheet').classList.add('show');
   }
   function closeSheet() { $('sheet').classList.remove('show'); }
 
@@ -248,22 +262,23 @@
       t.startedAt = Date.now(); t.pausedMs = 0; t.pausedAt = null;
     }
     if (t.status !== 'active') t.segStart = Date.now();
+    markDayStart(t);
     t.status = 'active';
     toast('Day started — reminders on');
   }
   function closeSegment(t, at) { if (t.segStart) { t.segments.push([t.segStart, at]); t.segStart = null; } }
   function pauseSession() { const t = today(); closeSegment(t, Date.now()); t.status = 'paused'; t.pausedAt = Date.now(); toast('Paused'); }
   function endSession() { const t = today(); closeSegment(t, Date.now()); t.status = 'ended'; t.pausedAt = null; toast('Day ended. Good work.'); }
-  function dayOff() { const t = today(); t.status = 'off'; toast('Day off — see you tomorrow'); }
+  function dayOff() { const t = today(); markDayStart(t); t.status = 'off'; toast('Day off — see you tomorrow'); }
 
   function sessionEnd(t) {
-    return t.startedAt ? t.startedAt + t.pausedMs + settings.maxHours * 3600000 : 0;
+    return t.startedAt ? currentWindow().bedAt : 0; // stand-ups stop at bedtime
   }
   function autoEndIfNeeded() {
     const t = today();
     if (t.status === 'active' && Date.now() > sessionEnd(t)) { closeSegment(t, sessionEnd(t)); t.status = 'ended'; }
     // close a segment left open from a previous day
-    Object.keys(days).forEach((k) => { const r = days[k]; if (k !== dayKey() && r.segStart) { closeSegment(rec(k), Math.min(Date.now(), r.segStart + settings.maxHours * 3600000)); if (r.status === 'active') r.status = 'ended'; } });
+    Object.keys(days).forEach((k) => { const r = days[k]; if (k !== logicalKey() && r.segStart) { closeSegment(rec(k), Math.min(Date.now(), bedtimeFor(k))); if (r.status === 'active') r.status = 'ended'; } });
   }
 
   // ---------- Scheduling ----------
@@ -287,30 +302,25 @@
       }
     }
 
-    // 2) Water across the awake window — current day plus the next 2, so it keeps working even if the app isn't opened
+    // 2) Water: from now until 1 h before bed — only the glasses still needed, so it stops at the goal
     const total = totalGlasses();
     const cw = currentWindow();
-    for (let d = 0; d < 3; d++) {
-      const base = new Date(cw.start); base.setDate(base.getDate() + d);
-      const w = windowFor(base);
-      const drank = d === 0 ? rec(w.key).water : 0;
-      const left = glassesLeft(drank);
-      if (left === 0 || w.end <= now) continue;
+    const wr = rec(cw.key);
+    const left = glassesLeft(wr.water);
+    if (cw.start && left > 0 && cw.end > now) {
       const times = [];
       if (settings.waterMode === 'fixed') {
         const step = settings.waterEvery * 60000;
-        for (let ts = w.start + step; ts <= w.end && times.length < left; ts += step) if (ts > now + 30000) times.push(ts);
+        for (let ts = cw.start + step; ts <= cw.end && times.length < left; ts += step) if (ts > now + 30000) times.push(ts);
       } else {
-        // auto: spread the glasses still needed evenly over what's left of the awake window
-        const from = Math.max(now, w.start);
-        const step = Math.max(15 * 60000, (w.end - from) / left);
-        for (let k = 0; k < left; k++) { const ts = Math.round(from + step * (k + 0.5)); if (ts <= w.end) times.push(ts); }
+        const step = Math.max(15 * 60000, (cw.end - now) / left);
+        for (let k = 0; k < left; k++) { const ts = Math.round(now + step * (k + 0.5)); if (ts <= cw.end) times.push(ts); }
       }
       times.slice(0, 40).forEach((ts, k) => {
         const glassNo = total - left + k + 1;
         const after = Math.max(0, settings.waterGoal - (glassNo - 1) * settings.glass);
         out.push({
-          id: ID.WATER + d * 100 + k, title: `Drink water 💧 Glass ${glassNo} of ${total}`,
+          id: ID.WATER + k, title: `Drink water 💧 Glass ${glassNo} of ${total}`,
           body: `${settings.glass} ml now · ${liters(after)} left to reach ${liters(settings.waterGoal)}`,
           channelId: CH_WATER, actionTypeId: 'WATER', extra: { kind: 'water' }, at: ts,
         });
@@ -318,10 +328,9 @@
     }
 
     // 3) Water safety-net check-in today
-    const wr = rec(cw.key);
     const wRemaining = Math.max(0, settings.waterGoal - wr.water);
     const check = atTime(new Date(), settings.checkTime).getTime();
-    if (check > now && check < cw.end && wRemaining > settings.waterGoal * 0.4) {
+    if (cw.start && check > now && check < cw.end && wRemaining > settings.waterGoal * 0.4) {
       out.push({
         id: ID.CHECK, title: `Behind on water: ${liters(wRemaining)} to go`,
         body: `You've had ${liters(wr.water)} of ${liters(settings.waterGoal)}. Drink a glass now.`,
@@ -335,7 +344,7 @@
       const date = new Date(); date.setDate(date.getDate() + d);
       if (!settings.nudgeDays.includes(date.getDay())) continue;
       const rec = days[dayKey(date)];
-      if (d === 0 && rec && rec.status !== 'idle') continue;
+      if (d === 0 && (today().status !== 'idle' || today().dayStart)) continue;
       const first = atTime(date, settings.nudgeTime).getTime();
       for (let r = 0; r < settings.nudgeMax; r++) {
         const ts = first + r * settings.nudgeRepeat * 60000;
@@ -343,7 +352,7 @@
         out.push({
           id: ID.NUDGE + n++,
           title: r === 0 ? 'Start your wellness day? ☀️' : 'Still not started — ready now?',
-          body: 'Tap Start to turn on stand-up and water reminders.',
+          body: 'Tap Start — water and stand-ups get planned from now until bedtime.',
           channelId: CH_ALARM, actionTypeId: 'NUDGE', extra: { kind: 'nudge' }, at: ts,
         });
       }
@@ -391,7 +400,7 @@
     const r = days[key] || { water: 0, stands: 0, log: [], segments: [] };
     const log = r.log || [];
     const segs = (r.segments || []).slice();
-    if (r.segStart && key === dayKey()) segs.push([r.segStart, Date.now()]);
+    if (r.segStart && key === logicalKey()) segs.push([r.segStart, Date.now()]);
     const standTimes = log.filter((e) => e.k === 'stand').map((e) => e.t).sort((a, b) => a - b);
     let workMs = 0, expected = 0, longest = 0;
     segs.forEach(([a, b]) => {
@@ -452,8 +461,8 @@
   };
 
   function renderStats() {
-    const t = dayStats(dayKey());
-    const tw = dayStats(currentWindow().key);
+    const t = dayStats(logicalKey());
+    const tw = t;
     const pctStand = t.expected ? Math.round(100 * Math.min(1, t.stands / t.expected)) : null;
     $('statToday').innerHTML = `
       <div class="kpis">
@@ -515,7 +524,7 @@
     if (t.status === 'active') {
       pill.textContent = 'Working'; pill.classList.add('active');
       $('statusHeadline').textContent = 'Reminders are on';
-      $('statusSub').textContent = `Auto-ends at ${fmtTime(new Date(sessionEnd(t)))} if you forget.`;
+      $('statusSub').textContent = `Stand-ups run until you end the day or bedtime (${fmtTime(new Date(sessionEnd(t)))}).`;
       $('sessionInfo').textContent = `Since ${fmtTime(new Date(t.startedAt))}`;
       mk('Pause', 'ghost', pauseSession); mk('End day', 'danger', endSession);
     } else if (t.status === 'paused') {
@@ -527,24 +536,24 @@
     } else if (t.status === 'ended') {
       pill.textContent = 'Done';
       $('statusHeadline').textContent = 'Day wrapped up';
-      $('statusSub').textContent = 'Back at it? You can restart reminders anytime.';
+      $('statusSub').textContent = 'Stand-ups off. Water reminders keep going until bedtime.';
       $('sessionInfo').textContent = '';
       mk('Start again', 'primary', startSession);
     } else if (t.status === 'off') {
       pill.textContent = 'Day off'; pill.classList.add('off');
       $('statusHeadline').textContent = 'Rest day';
-      $('statusSub').textContent = 'No nudges today. Changed your mind?';
+      $('statusSub').textContent = 'No stand-up alarms today. Water reminders still run until bedtime.';
       $('sessionInfo').textContent = '';
       mk('Start anyway', 'primary', startSession);
     } else {
       pill.textContent = 'Not started';
       $('statusHeadline').textContent = 'Ready to work?';
-      $('statusSub').textContent = `Tap Start when you sit down. If you forget, I'll nudge you at ${fmtTime(atTime(new Date(), settings.nudgeTime))}.`;
+      $('statusSub').textContent = `Tap Start — water and stand-ups get planned from now until bedtime (${fmtTime(new Date(currentWindow().bedAt))}). If you forget, I'll nudge you at ${fmtTime(atTime(new Date(), settings.nudgeTime))}.`;
       $('sessionInfo').textContent = '';
       mk('Start day', 'primary', startSession); mk('Day off', 'ghost', dayOff);
     }
 
-    // water (uses the awake-window day)
+    // water (today's start → bedtime)
     const wt = waterRec();
     const pct = Math.min(1, wt.water / settings.waterGoal);
     $('waterRing').style.strokeDashoffset = String(326.7 * (1 - pct));
@@ -554,10 +563,11 @@
     $('waterGoalLabel').textContent = `Goal ${liters(settings.waterGoal)}`;
     const total = totalGlasses(), gl = glassesLeft(wt.water);
     const cwin = currentWindow();
-    $('waterPlan').textContent = (gl > 0
+    $('waterPlan').textContent = !cwin.start && gl > 0 ? `${total} glasses × ${settings.glass} ml — plan starts when you tap Start (or log a glass)` : (gl > 0
       ? `Glass ${total - gl + 1} of ${total} · ${gl} × ${settings.glass} ml left`
       : `All ${total} glasses done — reminders stopped for today`)
-      + ` · awake ${fmtTime(new Date(cwin.start))}–${fmtTime(new Date(cwin.end))}`;
+      ;
+    $('bedLabel').textContent = `Bedtime ${fmtTime(new Date(cwin.bedAt))} · last glass by ${fmtTime(new Date(cwin.end))}`;
     $('waterPlus').textContent = `+ ${settings.glass} ml`;
 
     // stand
@@ -572,13 +582,11 @@
     modeDraft = null;
     $('s-waterGoal').value = settings.waterGoal;
     $('s-glass').value = settings.glass;
-    $('s-maxHours').value = settings.maxHours;
     $('s-nudgeTime').value = settings.nudgeTime;
     $('s-nudgeRepeat').value = settings.nudgeRepeat;
     $('s-nudgeMax').value = settings.nudgeMax;
     $('s-checkTime').value = settings.checkTime;
-    $('s-wakeTime').value = settings.wakeTime;
-    awakeDraft = null;
+    bedDraft = null;
     renderWaterPlanner();
     const wrap = $('s-days'); wrap.innerHTML = '';
     ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach((l, i) => {
@@ -594,7 +602,28 @@
   }
 
   let modeDraft = null;
-  let awakeDraft = null;
+  let bedDraft = null;
+  const BEDTIMES = ['21:00', '22:00', '23:00', '00:00', '01:00', '02:00'];
+  function bedChips(container, current, onPick) {
+    container.innerHTML = '';
+    BEDTIMES.forEach((bt) => {
+      const b = document.createElement('button');
+      b.className = 'chip' + (bt === current ? ' on' : ''); b.textContent = fmtTime(atTime(new Date(), bt));
+      b.onclick = () => onPick(bt);
+      container.appendChild(b);
+    });
+  }
+  // Plan from right now: how much time is left until the last glass, and how many glasses remain
+  function planFromNow(goal, glass, every, fixed, bed) {
+    const now = Date.now();
+    const w = currentWindow(bed);
+    const from = now;
+    const minsLeft = Math.max(0, Math.round((w.end - from) / 60000));
+    const drank = waterRec().water;
+    const left = Math.max(0, Math.ceil((goal - drank) / glass));
+    const iv = fixed ? every : (left ? Math.max(15, Math.floor(minsLeft / left)) : 0);
+    return { w, from, minsLeft, left, iv, fits: fixed ? Math.floor(minsLeft / every) : left };
+  }
   const TEMPLATES = [
     { label: '2.0 L · 8 × 250', goal: 2000, glass: 250 },
     { label: '2.5 L · 10 × 250', goal: 2500, glass: 250 },
@@ -612,17 +641,8 @@
       b.onclick = () => { $('s-waterGoal').value = x.goal; $('s-glass').value = x.glass; renderWaterPlanner(); };
       tpl.appendChild(b);
     });
-    const hours = awakeDraft || settings.awakeHours;
-    const ah = $('s-awake'); ah.innerHTML = '';
-    for (let h = 20; h >= 14; h--) {
-      const b = document.createElement('button');
-      b.className = 'chip' + (h === hours ? ' on' : ''); b.textContent = h + ' h';
-      b.onclick = () => { awakeDraft = h; renderWaterPlanner(); };
-      ah.appendChild(b);
-    }
-    const wake = $('s-wakeTime').value || settings.wakeTime;
-    const endD = atTime(new Date(), wake); endD.setHours(endD.getHours() + hours);
-    $('s-awakeRange').textContent = `Water reminders from ${fmtTime(atTime(new Date(), wake))} to ${fmtTime(endD)}`;
+    const bed = bedDraft || settings.bedTime;
+    bedChips($('s-bed'), bed, (bt) => { bedDraft = bt; renderWaterPlanner(); });
     const fixed = (modeDraft || settings.waterMode) === 'fixed';
     $('s-waterMode-auto').classList.toggle('on', !fixed);
     $('s-waterMode-fixed').classList.toggle('on', fixed);
@@ -631,11 +651,17 @@
     const goal = Number($('s-waterGoal').value) || settings.waterGoal;
     const glass = Number($('s-glass').value) || settings.glass;
     const n = Math.ceil(goal / glass);
-    const every = fixed ? (Number($('s-waterEvery').value) || settings.waterEvery) : Math.max(15, Math.floor(hours * 60 / n));
-    const needed = n * every;
-    let msg = `${(goal / 1000).toFixed(2)} L = ${n} glasses × ${glass} ml, one every ${every} min (${(needed / 60).toFixed(1)} h).`;
-    if (fixed && needed > hours * 60) msg += ` ⚠ That's longer than your ${hours} h awake window — the last ${Math.ceil((needed - hours * 60) / every)} glass(es) won't fit before bedtime. Shorten the interval or use bigger glasses.`;
-    else msg += ' Reminders stop once the goal is met.';
+    const every = Number($('s-waterEvery').value) || settings.waterEvery;
+    const p = planFromNow(goal, glass, every, fixed, bed);
+    const h = (m) => `${Math.floor(m / 60)} h ${pad(m % 60)} m`;
+    let msg = `${(goal / 1000).toFixed(2)} L = ${n} glasses × ${glass} ml. `;
+    if (p.left === 0) msg += 'Goal already reached today. 🎉';
+    else if (p.minsLeft === 0) msg += `It's past your last-glass time (${fmtTime(new Date(p.w.end))}). Tomorrow's plan starts when you start your day.`;
+    else {
+      msg += `${p.w.start ? 'From now' : 'If you start now'} (${fmtTime(new Date())}) until ${fmtTime(new Date(p.w.end))} (1 h before your ${fmtTime(new Date(p.w.bedAt))} bedtime) = ${h(p.minsLeft)} → ${p.left} glass${p.left > 1 ? 'es' : ''} left, one every ${p.iv} min.`;
+      if (fixed && p.fits < p.left) msg += ` ⚠ Only ${p.fits} fit before bed at every ${every} min — shorten the interval or use bigger glasses.`;
+      else msg += ' Reminders stop once the goal is met.';
+    }
     $('s-waterPreview').textContent = msg;
   }
 
@@ -648,13 +674,11 @@
     settings.waterMode = $('s-waterMode-fixed').classList.contains('on') ? 'fixed' : 'auto';
     settings.waterGoal = num('s-waterGoal', 1000, 6000, DEFAULTS.waterGoal);
     settings.glass = num('s-glass', 100, 1000, DEFAULTS.glass);
-    settings.maxHours = num('s-maxHours', 2, 16, DEFAULTS.maxHours);
     settings.nudgeRepeat = num('s-nudgeRepeat', 15, 180, DEFAULTS.nudgeRepeat);
     settings.nudgeMax = num('s-nudgeMax', 1, 10, DEFAULTS.nudgeMax);
     settings.nudgeTime = $('s-nudgeTime').value || DEFAULTS.nudgeTime;
     settings.checkTime = $('s-checkTime').value || DEFAULTS.checkTime;
-    settings.wakeTime = $('s-wakeTime').value || DEFAULTS.wakeTime;
-    settings.awakeHours = awakeDraft || settings.awakeHours;
+    settings.bedTime = bedDraft || settings.bedTime;
   }
 
   // ---------- Wire UI ----------
@@ -691,7 +715,8 @@
     $('testWater').onclick = () => testNotif('water');
     $('s-waterMode-auto').onclick = () => { modeDraft = 'auto'; renderWaterPlanner(); };
     $('s-waterMode-fixed').onclick = () => { modeDraft = 'fixed'; renderWaterPlanner(); };
-    ['s-waterGoal', 's-glass', 's-waterEvery', 's-wakeTime'].forEach((id) => { $(id).oninput = renderWaterPlanner; });
+    $('bedEdit').onclick = openBedSheet;
+    ['s-waterGoal', 's-glass', 's-waterEvery'].forEach((id) => { $(id).oninput = renderWaterPlanner; });
   }
 
   // ---------- Boot ----------

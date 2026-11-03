@@ -117,3 +117,5 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 700; margin: 16px 0 6px;
 .timeline li:first-child { border-top: 0; }
 textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
   padding: 10px; font: 12px monospace; resize: vertical; }
+.linkbtn { display: block; margin: 8px auto 0; background: none; border: 0; color: var(--amber); font-size: 13px; font-weight: 700; }
+.center-chips { justify-content: center; }

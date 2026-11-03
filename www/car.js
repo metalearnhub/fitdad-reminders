@@ -697,25 +697,6 @@ window.UpkeepCar = function (api) {
       </div>
 
       <div class="card">
-        <h2>Insights & advice</h2>
-        <ul class="insights">${ins.map((x) => x.t === 'list' ? `<li class="ins-list"><b>Check these:</b><ul>${x.m.map((m) => `<li>${m}</li>`).join('')}</ul></li>` : `<li class="ins-${x.t}">${x.m}</li>`).join('')}</ul>
-      </div>
-
-      <div class="card">
-        <h2>Parts that affect fuel efficiency</h2>
-        <p class="muted small" style="margin-top:-4px">Checked at ${fmtKm(currentKm(c))} — most worn first.</p>
-        ${partsHTML(c)}
-      </div>
-
-      <div class="card">
-        <h2>Last ${recent.length || ''} tanks</h2>
-        <h3>km per liter — dashed line = your average</h3>
-        ${miniBars(recent.map((s) => s.eff), recent.map((s) => new Date(s.t).toLocaleDateString([], { month: 'numeric', day: 'numeric' })), 'var(--water)', segsAll.length ? segsAll.reduce((a, s) => a + s.dist, 0) / segsAll.reduce((a, s) => a + s.liters, 0) : 0, (v) => v.toFixed(1))}
-        <h3>Price per liter (₱)</h3>
-        ${(() => { const pf = fills(c).filter((x) => x.price).slice(-12); return miniBars(pf.map((x) => x.price), pf.map((x) => new Date(x.t).toLocaleDateString([], { month: 'numeric', day: 'numeric' })), 'var(--amber)', 0, (v) => v.toFixed(0)); })()}
-      </div>
-
-      <div class="card">
         <div class="water-head"><h2>Leaderboard</h2><span class="muted small">${PERIOD_LABEL[period]}</span></div>
         <div class="seg" style="margin:6px 0 8px">
           <button class="chip ${lbSort === 'eff' ? 'on' : ''}" data-sort="eff">Best km/L</button>
@@ -725,6 +706,14 @@ window.UpkeepCar = function (api) {
           <thead><tr><th>#</th><th>Date</th><th>km</th><th>L</th><th>km/L</th><th>₱/L</th><th>₱/km</th></tr></thead>
           <tbody>${lb.map((s, i) => `<tr data-fill="${s.fill.id}"><td>${medal(i)}</td><td>${new Date(s.t).toLocaleDateString([], { month: 'short', day: 'numeric' })}</td><td>${Math.round(s.dist)}</td><td>${f1(s.liters)}</td><td class="${s.eff >= (cur.eff || 0) ? 'good' : 'bad'}"><b>${f1(s.eff)}</b></td><td>${f2(s.price)}</td><td>${f2(s.perKm)}</td></tr>`).join('')}</tbody>
         </table></div>` : segments(c).length ? `<p class="muted small">No tanks finished ${PERIOD_LABEL[period].toLowerCase()}. <button class="linkbtn" data-period="all" style="display:inline;margin:0">Show all time</button></p>` : '<p class="muted small">Log a full tank after your starting point to see the first result.</p>'}
+      </div>
+
+      <div class="card">
+        <h2>Last ${recent.length || ''} tanks</h2>
+        <h3>km per liter — dashed line = your average</h3>
+        ${miniBars(recent.map((s) => s.eff), recent.map((s) => new Date(s.t).toLocaleDateString([], { month: 'numeric', day: 'numeric' })), 'var(--water)', segsAll.length ? segsAll.reduce((a, s) => a + s.dist, 0) / segsAll.reduce((a, s) => a + s.liters, 0) : 0, (v) => v.toFixed(1))}
+        <h3>Price per liter (₱)</h3>
+        ${(() => { const pf = fills(c).filter((x) => x.price).slice(-12); return miniBars(pf.map((x) => x.price), pf.map((x) => new Date(x.t).toLocaleDateString([], { month: 'numeric', day: 'numeric' })), 'var(--amber)', 0, (v) => v.toFixed(0)); })()}
       </div>
 
       <div class="card">
@@ -740,6 +729,17 @@ window.UpkeepCar = function (api) {
         <ul class="timeline">${fills(c).slice().reverse().slice(0, 40).map((f) => `
           <li data-fill="${f.id}"><span>${f.full ? '⛽' : '◐'} ${fmtKm(f.km)}${f.station ? ' · ' + esc(f.station) : ''}<br><span class="muted small">${f.liters ? f1(f.liters) + ' L' : '—'}${f.price ? ' · ₱' + f2(f.price) + '/L' : ''}</span><br><span class="small">${fillNotes[f.id] || ''}</span></span>
           <span class="muted" style="text-align:right">${fmtDate(f.t)}${f.total ? '<br>' + peso(f.total) : ''}</span></li>`).join('') || '<li class="muted">No fill-ups yet.</li>'}</ul>
+      </div>
+
+      <div class="card">
+        <h2>Advice</h2>
+        <ul class="insights">${ins.map((x) => x.t === 'list' ? `<li class="ins-list"><b>Check these:</b><ul>${x.m.map((m) => `<li>${m}</li>`).join('')}</ul></li>` : `<li class="ins-${x.t}">${x.m}</li>`).join('')}</ul>
+      </div>
+
+      <div class="card">
+        <h2>Parts that affect fuel efficiency</h2>
+        <p class="muted small" style="margin-top:-4px">Checked at ${fmtKm(currentKm(c))} — most worn first.</p>
+        ${partsHTML(c)}
       </div>`;
   }
 

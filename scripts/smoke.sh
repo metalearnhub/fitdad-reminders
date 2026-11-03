@@ -1,29 +1,33 @@
 #!/usr/bin/env bash
-# Installs the debug APK, launches it, taps around, and captures screenshots + console logs.
+# Installs the debug APK, launches it, taps through the main flow, captures screenshots + logs.
 set -x
 mkdir -p smoke
+tap_text() {  # tap the first UI element whose text/content-desc matches $1
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null
+  B=$(grep -oE "(text|content-desc)=\"$1\"[^>]*bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" /tmp/ui.xml | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | head -1)
+  [ -z "$B" ] && { echo "NOT FOUND: $1"; return 1; }
+  read X1 Y1 X2 Y2 <<<"$(echo "$B" | tr '[],' '   ')"
+  adb shell input tap $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )); sleep 3; echo "TAPPED: $1"
+}
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb shell wm size | tee smoke/size.txt
 adb logcat -c
 adb shell am start -n com.dijaedadula.fitdad/.MainActivity
-sleep 8
+sleep 10
 adb exec-out screencap -p > smoke/01-launch.png
-adb shell uiautomator dump /sdcard/ui1.xml && adb pull /sdcard/ui1.xml smoke/ui1.xml
-# If the notification permission dialog is up, tap Allow
-adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null
-ALLOW=$(grep -o 'text="Allow"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' /tmp/ui.xml | grep -o '\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]' | head -1)
-if [ -n "$ALLOW" ]; then
-  read X1 Y1 X2 Y2 <<<"$(echo "$ALLOW" | tr -d '[]' | tr ',' ' ' | sed 's/\]\[/ /')"
-  adb shell input tap $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )); sleep 4
-fi
+tap_text "Allow" | tee -a smoke/steps.txt
 adb exec-out screencap -p > smoke/02-after-permission.png
-adb shell uiautomator dump /sdcard/ui2.xml && adb pull /sdcard/ui2.xml smoke/ui2.xml
-read W H <<<"$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1 | tr 'x' ' ')"
-# Tap "Settings" tab (bottom-right) and "Start day" (left button in first card ~ y 22%)
-adb shell input tap $(( W*5/6 )) $(( H-60 )); sleep 2
-adb exec-out screencap -p > smoke/03-tap-settings.png
-adb shell input tap $(( W/6 )) $(( H-60 )); sleep 2
-adb exec-out screencap -p > smoke/04-tap-today.png
+tap_text "Start day" | tee -a smoke/steps.txt
+adb exec-out screencap -p > smoke/03-started.png
+tap_text "+ 250 ml" | tee -a smoke/steps.txt
+tap_text "Settings" | tee -a smoke/steps.txt
+adb exec-out screencap -p > smoke/04-settings.png
+tap_text "Test alarm (10s)" | tee -a smoke/steps.txt
+adb shell input keyevent KEYCODE_HOME
+sleep 15
+adb exec-out screencap -p > smoke/05-test-alarm.png
+adb shell dumpsys notification --noredact | grep -iE "fitdad|pkg=com.dijaedadula" | head -40 > smoke/notifications.txt
+adb shell dumpsys alarm | grep -iE "com.dijaedadula.fitdad" | head -60 > smoke/alarms.txt
 adb logcat -d > smoke/logcat-full.txt
-grep -iE "Capacitor|chromium|Console|FitDad|AndroidRuntime|FATAL" smoke/logcat-full.txt > smoke/logcat-app.txt || true
+grep -iE "Capacitor/Console|JavaScript Error|AndroidRuntime|FATAL|LocalNotification" smoke/logcat-full.txt > smoke/logcat-app.txt || true
 exit 0

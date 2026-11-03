@@ -5,12 +5,30 @@
 (function () {
   'use strict';
 
+  function showError(msg) {
+    let b = document.getElementById('errBanner');
+    if (!b) {
+      b = document.createElement('div'); b.id = 'errBanner';
+      b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99;background:#7f1d1d;color:#fff;font:12px monospace;padding:8px;max-height:30vh;overflow:auto;pointer-events:none';
+      document.body.appendChild(b);
+    }
+    b.textContent = 'FitDad error: ' + msg;
+  }
+  window.addEventListener('error', (e) => showError(e.message));
+  window.addEventListener('unhandledrejection', (e) => showError(String(e.reason && e.reason.message || e.reason)));
+
   // ---------- Native bridges ----------
   const Cap = window.Capacitor;
   const isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
-  const LN = isNative ? Cap.registerPlugin('LocalNotifications') : null;
-  const Prefs = isNative ? Cap.registerPlugin('Preferences') : null;
-  const AppPlugin = isNative ? Cap.registerPlugin('App') : null;
+  // Tiny plugin proxy over the native bridge (no @capacitor/core bundle needed)
+  const plugin = (name) => new Proxy({}, {
+    get: (_, method) => method === 'addListener'
+      ? (eventName, cb) => Cap.addListener(name, eventName, cb)
+      : (opts = {}) => Cap.nativePromise(name, method, opts),
+  });
+  const LN = isNative ? plugin('LocalNotifications') : null;
+  const Prefs = isNative ? plugin('Preferences') : null;
+  const AppPlugin = isNative ? plugin('App') : null;
 
   // ---------- IDs & channels ----------
   const ID = { STAND: 1000, WATER: 2000, NUDGE: 3000, CHECK: 4000, SNOOZE: 5000, TEST: 9000 };

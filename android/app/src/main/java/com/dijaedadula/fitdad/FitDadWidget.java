@@ -42,7 +42,7 @@ public class FitDadWidget extends AppWidgetProvider {
         super.onReceive(ctx, intent);
         String a = intent.getAction();
         if (ACTION_WATER.equals(a) || ACTION_STAND.equals(a)) {
-            log(ctx, ACTION_WATER.equals(a));
+            log(ctx, ACTION_WATER.equals(a), "widget");
             updateAll(ctx);
         }
     }
@@ -92,14 +92,14 @@ public class FitDadWidget extends AppWidgetProvider {
     }
 
     /** Log a glass or a stand-up from the widget, exactly like a confirmation in the app. */
-    static void log(Context ctx, boolean water) {
+    static void log(Context ctx, boolean water, String src) {
         try {
             JSONObject root = load(ctx);
             JSONObject r = today(root);
             long now = System.currentTimeMillis();
             JSONObject ev = new JSONObject();
             ev.put("t", now);
-            ev.put("src", "widget");
+            ev.put("src", src);
             if (water) {
                 int glass = setting(root, "glass", 250);
                 r.put("water", r.optInt("water", 0) + glass);

@@ -251,12 +251,14 @@
     // Tapping the notification itself opens the app on a confirm sheet with the same choices
     if (a === 'tap') { if (['stand', 'water', 'nudge'].includes(k)) openSheet(k); return; }
 
+    // "Done" / "Drank" were already saved natively the moment the button was tapped (see MainActivity) —
+    // load() above picked them up, so here we only refresh the screen and re-plan.
     if (k === 'stand') {
       if (a === 'snooze') await snooze('stand', 5);
-      else if (a === 'done') confirmStand('notif');
+      else if (a === 'done') toast('Nice. Stand-up logged.');
     } else if (k === 'water') {
       if (a === 'snooze') await snooze('water', 10);
-      else if (a === 'drank') confirmWater('notif');
+      else if (a === 'drank') toast(`+${settings.glass} ml logged`);
     } else if (k === 'nudge') {
       if (a === 'start') startSession();
       else if (a === 'dayoff') dayOff();

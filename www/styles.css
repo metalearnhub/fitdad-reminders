@@ -121,3 +121,21 @@ textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px s
 .center-chips { justify-content: center; }
 .miss { color: var(--danger); font-weight: 700; }
 .paste { margin-top: 12px; } .paste summary { cursor: pointer; padding: 6px 0; } .paste textarea { margin-top: 8px; }
+
+.pill.beta { background: rgba(167,139,250,.18); color: #A78BFA; }
+.beta-only { display: none; font-size: 10px; padding: 3px 7px; }
+body.is-beta .beta-only { display: inline-block; }
+.carlist { list-style: none; padding: 0; margin: 8px 0 0; }
+.caritem { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.caritem:first-child { border-top: 0; }
+.ci-icon { font-size: 22px; width: 30px; text-align: center; }
+.ci-main { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.ci-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--stand); }
+.caritem.soon .ci-dot { background: var(--amber); }
+.caritem.overdue .ci-dot { background: var(--danger); }
+.caritem.overdue .ci-main .muted { color: var(--danger); }
+.form { display: flex; flex-direction: column; gap: 10px; text-align: left; margin-top: 10px; }
+.form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; flex: 1; }
+.form input { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 11px; font-size: 15px; width: 100%; color-scheme: dark; }
+.row2 { display: flex; gap: 10px; }
+.sheet-card { max-height: 88vh; overflow-y: auto; }

@@ -35,6 +35,7 @@
   const ID = { STAND: 1000, WATER: 2000, NUDGE: 3000, CHECK: 4000, SNOOZE: 5000, TEST: 9000, FOLLOW_S: 10000, FOLLOW_W: 10300 };
   const CH_ALARM = 'fitdad-alarm';
   const CH_WATER = 'fitdad-water';
+  const CH_CAR = 'upkeep-car';
 
   // ---------- Defaults ----------
   const DEFAULTS = {
@@ -55,6 +56,8 @@
   };
 
   let settings = { ...DEFAULTS };
+  const extraData = { car: null }; // other modules' data (car care), saved alongside
+  let Car = null;
   let days = {}; // { 'YYYY-MM-DD': { status, startedAt, pausedAt, pausedMs, water, stands } }
 
   // ---------- Utils ----------
@@ -113,6 +116,7 @@
         const data = JSON.parse(raw);
         settings = { ...DEFAULTS, ...(data.settings || {}) };
         days = data.days || {};
+        extraData.car = data.car || null;
       }
     } catch (e) { console.warn('load failed', e); }
     // keep only the last 60 days of history
@@ -121,7 +125,7 @@
   }
 
   async function save() {
-    const raw = JSON.stringify({ settings, days });
+    const raw = JSON.stringify({ settings, days, car: extraData.car });
     try {
       if (isNative) {
         await Prefs.set({ key: 'fitdad', value: raw });
@@ -152,19 +156,27 @@
         id: CH_WATER, name: 'Water reminders', description: 'Drink-water reminders and check-ins',
         importance: 5, visibility: 1, vibration: true, sound: 'fitdad_water.wav',
       });
+      await LN.createChannel({
+        id: CH_CAR, name: 'Car care', description: 'Car maintenance due dates and odometer reminders',
+        importance: 4, visibility: 1, vibration: true,
+      });
 
       await LN.registerActionTypes({
         types: [
           { id: 'STAND', actions: [{ id: 'done', title: 'Done ✓' }, { id: 'snooze', title: 'Snooze 5 min' }] },
           { id: 'WATER', actions: [{ id: 'drank', title: 'Drank a glass' }, { id: 'snooze', title: 'Snooze 10 min' }] },
           { id: 'NUDGE', actions: [{ id: 'start', title: 'Start now' }, { id: 'later', title: 'Later' }, { id: 'dayoff', title: 'Day off' }] },
+          { id: 'CAR', actions: [{ id: 'done', title: 'Done — log it' }, { id: 'snooze', title: 'Remind tomorrow' }] },
+          { id: 'CARODO', actions: [{ id: 'update', title: 'Update km' }] },
         ],
       });
 
-      LN.addListener('localNotificationActionPerformed', (ev) => handleAction(ev).catch(console.error));
+      // Every notification tap/button is queued natively by MainActivity (survives a cold start); drain the queue here
+      LN.addListener('localNotificationActionPerformed', () => drainActions().catch(console.error));
 
       if (AppPlugin) {
-        AppPlugin.addListener('resume', async () => { await load(); autoEndIfNeeded(); render(); await reschedule(); });
+        AppPlugin.addListener('resume', async () => { await load(); autoEndIfNeeded(); render(); await reschedule(); await drainActions(); });
+        try { const info = await AppPlugin.getInfo(); if (info && /\.beta$/.test(info.id)) document.body.classList.add('is-beta'); } catch (_) { }
         AppPlugin.addListener('appUrlOpen', (e) => handleDeepLink(e && e.url));
         try { const l = await AppPlugin.getLaunchUrl(); if (l && l.url) setTimeout(() => handleDeepLink(l.url), 300); } catch (_) { }
       }
@@ -226,6 +238,7 @@
     document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.view === name));
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + name));
     if (name === 'stats') renderStats();
+    if (name === 'car' && Car) Car.render();
     if (name === 'settings') renderSettings();
   }
   async function handleDeepLink(url) {
@@ -241,12 +254,35 @@
   }
 
   // ---------- Actions from notifications ----------
+  let draining = false;
+  async function drainActions() {
+    if (!isNative || draining) return;
+    draining = true;
+    try {
+      const raw = (await Prefs.get({ key: 'upkeep_actions' })).value;
+      if (!raw) return;
+      await Prefs.remove({ key: 'upkeep_actions' });
+      const list = JSON.parse(raw) || [];
+      for (const q of list) {
+        let notification = {};
+        try { notification = JSON.parse(q.obj || '{}'); } catch (_) { }
+        await handleAction({ actionId: q.action, notification });
+      }
+    } finally { draining = false; }
+  }
+
   async function handleAction(ev) {
     await load(); // pick up anything the widget logged meanwhile
     const n = ev.notification || {};
     const kind = (n.extra && n.extra.kind) || '';
     const a = ev.actionId;
     const k = kind === 'check' ? 'water' : kind;
+
+    // Car care notifications
+    if (k === 'car' || k === 'carodo') {
+      if (Car && Car.handleAction(a, n.extra || {}) === 'snooze') await snoozeCar(n);
+      return;
+    }
 
     // Tapping the notification itself opens the app on a confirm sheet with the same choices
     if (a === 'tap') { if (['stand', 'water', 'nudge'].includes(k)) openSheet(k); return; }
@@ -264,6 +300,17 @@
       else if (a === 'dayoff') dayOff();
     }
     await save(); render(); await reschedule();
+  }
+
+  async function snoozeCar(n) {
+    if (!isNative) return;
+    const at = new Date(Date.now() + 86400000);
+    await LN.schedule({ notifications: [{
+      id: 21000 + Math.floor(Math.random() * 900), title: n.title || 'Car care reminder', body: n.body || '',
+      channelId: CH_CAR, actionTypeId: 'CAR', smallIcon: 'ic_stat_fitdad', iconColor: '#F59E0B',
+      extra: n.extra, schedule: { at, allowWhileIdle: true },
+    }] });
+    toast('Reminding you tomorrow');
   }
 
   async function snooze(kind, minutes) {
@@ -409,6 +456,9 @@
         }
       });
     }
+
+    // 3c) Car care
+    if (Car) out.push(...Car.buildNotifications(now, CH_CAR));
 
     // 4) Morning nudges for today (if not started) and the next 13 days
     let n = 0;
@@ -818,14 +868,14 @@
     $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); };
     $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); };
     $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); await reschedule(); };
-    const backupJSON = () => JSON.stringify({ app: 'fitdad', v: 1, at: new Date().toISOString(), settings, days }, null, 1);
+    const backupJSON = () => JSON.stringify({ app: 'fitdad', v: 1, at: new Date().toISOString(), settings, days, car: extraData.car }, null, 1);
     const restoreFrom = async (text) => {
       try {
         const data = JSON.parse(String(text).trim());
         if (data.app !== 'fitdad' || !data.days) throw new Error('not an Upkeep backup');
         const n = Object.keys(data.days).length;
         if (!confirm(`Restore backup from ${new Date(data.at).toLocaleString()} (${n} day${n === 1 ? '' : 's'} of history)? This replaces the data on this phone.`)) return;
-        settings = { ...DEFAULTS, ...(data.settings || {}) }; days = data.days;
+        settings = { ...DEFAULTS, ...(data.settings || {}) }; days = data.days; extraData.car = data.car || null;
         await save(); render(); renderSettings(); await reschedule(); toast('Backup restored ✓');
       } catch (e) { toast('Invalid backup: ' + e.message); }
     };
@@ -874,17 +924,21 @@
   // ---------- Boot ----------
   async function boot() {
     wire();
+    if (window.UpkeepCar) {
+      Car = window.UpkeepCar({ $, toast, fmtTime, pad, root: () => extraData, save, reschedule, showTab });
+    }
     await load();
     autoEndIfNeeded();
     render();
     await setupNative();
     await save();
     await reschedule();
+    await drainActions();
     // refresh UI every minute (day rollover, next-reminder label)
     setInterval(() => { autoEndIfNeeded(); render(); updateNextLabel(buildNotifications()); }, 60000);
   }
 
-  if (!isNative) window.__fitdad = { openSheet };
+  if (!isNative) window.__fitdad = { openSheet, build: () => buildNotifications() };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 })();

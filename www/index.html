@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="top">
-    <div class="brand"><span class="logo">U</span> Upkeep</div>
+    <div class="brand"><span class="logo">U</span> Upkeep <span class="pill beta beta-only">Beta</span></div>
     <div class="date" id="todayLabel"></div>
   </header>
 
@@ -157,10 +157,7 @@
 
     <!-- CAR -->
     <section class="view" id="view-car">
-      <div class="card">
-        <h2>Car care 🚗</h2>
-        <p class="muted">Coming in Phase 2: oil changes, filters, tires, brakes, battery, registration and insurance reminders — by date or mileage — plus a service log.</p>
-      </div>
+      <div id="carRoot"></div>
     </section>
   </main>
 
@@ -173,6 +170,7 @@
 
   <div class="sheet" id="sheet"><div class="sheet-card" id="sheetBody"></div></div>
   <div class="toast" id="toast"></div>
+  <script src="car.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

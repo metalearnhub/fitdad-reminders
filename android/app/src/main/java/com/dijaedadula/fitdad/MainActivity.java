@@ -3,6 +3,8 @@ package com.dijaedadula.fitdad;
 import android.content.Intent;
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
+import android.content.SharedPreferences;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
@@ -41,9 +43,17 @@ public class MainActivity extends BridgeActivity {
                 FitDadWidget.log(this, false, "notif");
             } else if ("drank".equals(action) && ("water".equals(kind) || "check".equals(kind))) {
                 FitDadWidget.log(this, true, "notif");
-            } else {
-                return;
             }
+            // Queue every action for the web app (it drains this on start/resume), so nothing is lost on a cold start
+            SharedPreferences sp = getSharedPreferences(FitDadWidget.PREFS, MODE_PRIVATE);
+            JSONArray q;
+            try { q = new JSONArray(sp.getString("upkeep_actions", "[]")); } catch (Exception e) { q = new JSONArray(); }
+            JSONObject entry = new JSONObject();
+            entry.put("action", action);
+            entry.put("obj", obj);
+            entry.put("t", System.currentTimeMillis());
+            q.put(entry);
+            sp.edit().putString("upkeep_actions", q.toString()).apply();
             i.putExtra(EXTRA_HANDLED, true);
             FitDadWidget.updateAll(this);
         } catch (Exception ignored) { }

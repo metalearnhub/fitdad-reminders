@@ -28,6 +28,7 @@ public class FitDadWidget extends AppWidgetProvider {
 
     static final String ACTION_WATER = "com.dijaedadula.fitdad.WIDGET_WATER";
     static final String ACTION_STAND = "com.dijaedadula.fitdad.WIDGET_STAND";
+    static final String ACTION_ENDWORK = "com.dijaedadula.fitdad.WIDGET_ENDWORK";
     static final String PREFS = "CapacitorStorage";
     static final String KEY = "fitdad";
     static final String KEY_WEEK = "fitdad_week";
@@ -43,6 +44,9 @@ public class FitDadWidget extends AppWidgetProvider {
         String a = intent.getAction();
         if (ACTION_WATER.equals(a) || ACTION_STAND.equals(a)) {
             log(ctx, ACTION_WATER.equals(a), "widget");
+            updateAll(ctx);
+        } else if (ACTION_ENDWORK.equals(a)) {
+            endWork(ctx, "widget");
             updateAll(ctx);
         }
     }
@@ -147,6 +151,45 @@ public class FitDadWidget extends AppWidgetProvider {
         for (int id = remindBase; id < remindBase + 100; id++) nm.cancel(id);
     }
 
+    /**
+     * "Done working": close the work session (it's recorded for Stats) and stop stand-up alarms.
+     * Water reminders keep running until bedtime.
+     */
+    static void endWork(Context ctx, String src) {
+        try {
+            JSONObject root = load(ctx);
+            JSONObject r = today(root);
+            if (!"active".equals(r.optString("status")) && !"paused".equals(r.optString("status"))) return;
+            long now = System.currentTimeMillis();
+            if (!r.has("segments")) r.put("segments", new JSONArray());
+            if (r.has("segStart") && !r.isNull("segStart")) {
+                JSONArray seg = new JSONArray(); seg.put(r.getLong("segStart")); seg.put(now);
+                r.getJSONArray("segments").put(seg);
+                r.put("segStart", JSONObject.NULL);
+            }
+            r.put("status", "ended");
+            r.put("pausedAt", JSONObject.NULL);
+            JSONObject ev = new JSONObject(); ev.put("t", now); ev.put("k", "endwork"); ev.put("src", src);
+            r.getJSONArray("log").put(ev);
+            root.put("widgetDirty", true);
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, root.toString()).apply();
+            // cancel every pending stand-up reminder and stand-up follow-up
+            AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            SharedPreferences.Editor store = ctx.getSharedPreferences("NOTIFICATION_STORE", Context.MODE_PRIVATE).edit();
+            int flags = PendingIntent.FLAG_NO_CREATE | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0);
+            Intent publisher = new Intent().setComponent(new ComponentName(ctx.getPackageName(),
+                    "com.capacitorjs.plugins.localnotifications.TimedNotificationPublisher"));
+            int[][] ranges = { { 1000, 1100 }, { 10000, 10300 } };
+            for (int[] rg : ranges) for (int id = rg[0]; id < rg[1]; id++) {
+                PendingIntent pi = PendingIntent.getBroadcast(ctx, id, publisher, flags);
+                if (pi != null) { am.cancel(pi); pi.cancel(); store.remove(String.valueOf(id)); }
+                nm.cancel(id);
+            }
+            store.apply();
+        } catch (Exception ignored) { }
+    }
+
     static PendingIntent broadcast(Context ctx, String action, int req) {
         Intent i = new Intent(ctx, FitDadWidget.class).setAction(action);
         return PendingIntent.getBroadcast(ctx, req, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -192,8 +235,9 @@ public class FitDadWidget extends AppWidgetProvider {
             v.setTextViewText(R.id.w_week, week != null ? week : "Week stats appear after you use the app");
 
             boolean idle = "idle".equals(status) || "ended".equals(status) || "off".equals(status);
-            v.setTextViewText(R.id.w_btn_main, idle ? "Start" : "Open");
-            v.setOnClickPendingIntent(R.id.w_btn_main, openApp(ctx, idle ? "fitdad://start" : "fitdad://today", 3));
+            // Not working → Start; working → "Done" ends the session right from the home screen
+            v.setTextViewText(R.id.w_btn_main, idle ? "Start" : "Done ✓");
+            v.setOnClickPendingIntent(R.id.w_btn_main, idle ? openApp(ctx, "fitdad://start", 3) : broadcast(ctx, ACTION_ENDWORK, 5));
         } catch (Exception e) {
             v.setTextViewText(R.id.w_status, "Upkeep");
         }

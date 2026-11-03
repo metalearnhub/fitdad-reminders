@@ -43,6 +43,8 @@ public class MainActivity extends BridgeActivity {
                 FitDadWidget.log(this, false, "notif");
             } else if ("drank".equals(action) && ("water".equals(kind) || "check".equals(kind))) {
                 FitDadWidget.log(this, true, "notif");
+            } else if ("endwork".equals(action)) {
+                FitDadWidget.endWork(this, "notif");
             }
             // Queue every action for the web app (it drains this on start/resume), so nothing is lost on a cold start
             SharedPreferences sp = getSharedPreferences(FitDadWidget.PREFS, MODE_PRIVATE);

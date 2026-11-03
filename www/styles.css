@@ -119,3 +119,4 @@ textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px s
   padding: 10px; font: 12px monospace; resize: vertical; }
 .linkbtn { display: block; margin: 8px auto 0; background: none; border: 0; color: var(--amber); font-size: 13px; font-weight: 700; }
 .center-chips { justify-content: center; }
+.miss { color: var(--danger); font-weight: 700; }

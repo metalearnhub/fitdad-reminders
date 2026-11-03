@@ -1,6 +1,9 @@
 package com.dijaedadula.fitdad;
 
+import android.app.AlarmManager;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.os.Build;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
@@ -112,7 +115,36 @@ public class FitDadWidget extends AppWidgetProvider {
             SharedPreferences.Editor ed = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
             ed.putString(KEY, root.toString());
             ed.apply();
+            cancelFollowUps(ctx, water, r.optJSONArray("follows"));
         } catch (Exception ignored) { }
+    }
+
+    /**
+     * Confirmed from the widget → cancel pending "did you really…?" follow-ups for that kind
+     * and clear its reminders from the notification shade (same IDs the app uses).
+     */
+    static void cancelFollowUps(Context ctx, boolean water, JSONArray follows) {
+        String kind = water ? "water" : "stand";
+        int remindBase = water ? 2000 : 1000;
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        SharedPreferences.Editor store = ctx.getSharedPreferences("NOTIFICATION_STORE", Context.MODE_PRIVATE).edit();
+        int flags = PendingIntent.FLAG_NO_CREATE | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0);
+        Intent publisher = new Intent().setComponent(new ComponentName(ctx.getPackageName(),
+                "com.capacitorjs.plugins.localnotifications.TimedNotificationPublisher"));
+        long now = System.currentTimeMillis();
+        // only follow-ups for reminders that already rang; future reminders keep theirs
+        if (follows != null) for (int i = 0; i < follows.length(); i++) {
+            JSONObject f = follows.optJSONObject(i);
+            if (f == null || !kind.equals(f.optString("k")) || f.optLong("of") > now + 60000) continue;
+            int id = f.optInt("id");
+            PendingIntent pi = PendingIntent.getBroadcast(ctx, id, publisher, flags);
+            if (pi != null) { am.cancel(pi); pi.cancel(); }
+            store.remove(String.valueOf(id));
+            nm.cancel(id);
+        }
+        store.apply();
+        for (int id = remindBase; id < remindBase + 100; id++) nm.cancel(id);
     }
 
     static PendingIntent broadcast(Context ctx, String action, int req) {

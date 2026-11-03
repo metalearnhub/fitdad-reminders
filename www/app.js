@@ -32,7 +32,7 @@
   const Widget = isNative ? plugin('WidgetBridge') : null;
 
   // ---------- IDs & channels ----------
-  const ID = { STAND: 1000, WATER: 2000, NUDGE: 3000, CHECK: 4000, SNOOZE: 5000, TEST: 9000 };
+  const ID = { STAND: 1000, WATER: 2000, NUDGE: 3000, CHECK: 4000, SNOOZE: 5000, TEST: 9000, FOLLOW_S: 10000, FOLLOW_W: 10300 };
   const CH_ALARM = 'fitdad-alarm';
   const CH_WATER = 'fitdad-water';
 
@@ -50,6 +50,8 @@
     checkTime: '16:00',
     bedTime: '23:00',     // planned sleep time — water is spread from now until bedtime
     lastGlassBefore: 60,  // minutes before bed for the last glass (fewer bathroom trips at night)
+    followUp: 5,          // minutes after a reminder to ask again if not confirmed (0 = off)
+    followUpRepeats: 2,   // how many follow-ups before it counts as missed
   };
 
   let settings = { ...DEFAULTS };
@@ -307,6 +309,20 @@
     Object.keys(days).forEach((k) => { const r = days[k]; if (k !== logicalKey() && r.segStart) { closeSegment(rec(k), Math.min(Date.now(), bedtimeFor(k))); if (r.status === 'active') r.status = 'ended'; } });
   }
 
+  // ---------- Follow-ups: was a reminder actually answered? ----------
+  const ANSWER = { stand: ['stand', 'skip_s', 'snooze_s'], water: ['water', 'skip_w', 'snooze_w'] };
+  // A reminder counts as answered by any confirm / skip / snooze between it and the next reminder of that kind
+  function answeredBetween(r, kind, from, to) {
+    return (r.log || []).some((e) => ANSWER[kind].includes(e.k) && e.t >= from - 60000 && e.t < to);
+  }
+  // true when the newest answer for this kind is newer than the newest reminder that rang
+  function lastAnswerAfterDelivery(r, kind) {
+    const lastFired = Math.max(0, ...(r.fired || []).filter((f) => f.k === kind).map((f) => f.t), ...(r.plan || []).filter((p) => p.k === kind && p.t <= Date.now()).map((p) => p.t));
+    const lastAns = Math.max(0, ...(r.log || []).filter((e) => ANSWER[kind].includes(e.k)).map((e) => e.t));
+    return lastAns >= lastFired - 60000;
+  }
+  function followWindow() { return settings.followUp * 60000 * settings.followUpRepeats; }
+
   // ---------- Scheduling ----------
   function buildNotifications() {
     const out = [];
@@ -364,6 +380,34 @@
       });
     }
 
+    // 3b) Follow-ups: ask again every N min until confirmed (cancelled automatically when you answer)
+    if (settings.followUp > 0) {
+      const F = settings.followUp * 60000, R = settings.followUpRepeats;
+      ['stand', 'water'].forEach((kind) => {
+        const base = ID[kind === 'stand' ? 'FOLLOW_S' : 'FOLLOW_W'];
+        const items = out.filter((x) => x.extra.kind === kind).sort((a, b) => a.at - b.at);
+        const ask = (fireAt, nextAt, slot, j) => ({
+          id: base + slot * R + (j - 1),
+          title: kind === 'stand' ? `Did you stand up? 🧍 (${fmtTime(new Date(fireAt))})` : `Did you drink your water? 💧 (${fmtTime(new Date(fireAt))})`,
+          body: `Not confirmed yet — tap ${kind === 'stand' ? 'Done ✓' : 'Drank a glass'} if you did. Follow-up ${j} of ${R}.`,
+          channelId: kind === 'stand' ? CH_ALARM : CH_WATER, actionTypeId: kind === 'stand' ? 'STAND' : 'WATER',
+          extra: { kind, follow: true, of: fireAt }, at: fireAt + j * F,
+        });
+        // future reminders
+        items.forEach((x, idx) => {
+          const nextAt = items[idx + 1] ? items[idx + 1].at : Infinity;
+          for (let j = 1; j <= R; j++) { const at = x.at + j * F; if (at < nextAt && idx < 90) out.push(ask(x.at, nextAt, idx, j)); }
+        });
+        // the most recent reminder that already rang but wasn't answered
+        const r = today();
+        const last = (r.fired || []).filter((f) => f.k === kind).map((f) => f.t).sort((a, b) => b - a)[0];
+        if (last && !answeredBetween(r, kind, last, Infinity)) {
+          const nextAt = items[0] ? items[0].at : Infinity;
+          for (let j = 1; j <= R; j++) { const at = last + j * F; if (at > now && at < nextAt) out.push(ask(last, nextAt, 95, j)); }
+        }
+      });
+    }
+
     // 4) Morning nudges for today (if not started) and the next 13 days
     let n = 0;
     for (let d = 0; d < 14; d++) {
@@ -387,12 +431,27 @@
   }
 
   async function reschedule() {
+    // Remember which reminders already rang (for follow-ups and the missed count in Stats)
+    const r = today(), now = Date.now();
+    r.fired = r.fired || [];
+    (r.plan || []).forEach((p) => { if (p.t <= now && !r.fired.some((f) => f.k === p.k && f.t === p.t)) r.fired.push(p); });
     const list = buildNotifications();
+    r.plan = list.filter((x) => (x.extra.kind === 'stand' || x.extra.kind === 'water') && !x.extra.follow).map((x) => ({ k: x.extra.kind, t: x.at }));
+    r.follows = list.filter((x) => x.extra.follow).map((x) => ({ id: x.id, k: x.extra.kind, of: x.extra.of })); // lets the widget cancel the right ones
+    await save();
     updateNextLabel(list);
     if (!isNative) return;
     try {
       const pending = await LN.getPending();
       const managed = (pending.notifications || []).filter((p) => p.id < ID.SNOOZE || p.id >= ID.TEST + 1000);
+      // clear answered reminders/follow-ups still sitting in the notification shade
+      try {
+        const del = (await LN.getDeliveredNotifications()).notifications || [];
+        const kindOf = (id) => ((id >= ID.STAND && id < ID.WATER) || (id >= ID.FOLLOW_S && id < ID.FOLLOW_W)) ? 'stand'
+          : ((id >= ID.WATER && id < ID.NUDGE) || (id >= ID.FOLLOW_W && id < ID.FOLLOW_W + 300)) ? 'water' : null;
+        const stale = del.filter((d) => { const k = kindOf(d.id); return k && answeredBetween(r, k, now - 3 * 3600000, Infinity) && lastAnswerAfterDelivery(r, k); });
+        if (stale.length) await LN.removeDeliveredNotifications({ notifications: stale });
+      } catch (_) { }
       if (managed.length) await LN.cancel({ notifications: managed.map((p) => ({ id: p.id })) });
       if (list.length) {
         await LN.schedule({
@@ -436,8 +495,21 @@
       standTimes.filter((t) => t > a && t < b).forEach((t) => { longest = Math.max(longest, t - last); last = t; });
       longest = Math.max(longest, b - last);
     });
+    // reminder response: every reminder that rang, answered before the next one of its kind?
+    const rang = (r.fired || []).concat((r.plan || []).filter((p) => p.t <= Date.now()))
+      .filter((f, i, arr) => arr.findIndex((g) => g.k === f.k && g.t === f.t) === i);
+    let reminders = 0, answered = 0, missed = 0;
+    ['stand', 'water'].forEach((kind) => {
+      const ts = rang.filter((f) => f.k === kind).map((f) => f.t).sort((a, b) => a - b);
+      ts.forEach((t, i) => {
+        reminders++;
+        if (answeredBetween({ log }, kind, t, ts[i + 1] || Infinity)) answered++;
+        else if (Date.now() > t + followWindow()) missed++;
+      });
+    });
     const water = r.water || 0;
     return {
+      reminders, answered, missed,
       key, water, goalMet: water >= settings.waterGoal, glasses: log.filter((e) => e.k === 'water').length,
       stands: r.stands || 0, expected, workMs, longest,
       snoozes: log.filter((e) => e.k.startsWith('snooze')).length,
@@ -458,7 +530,8 @@
       avgWater: sum((s) => s.water) / n, goalDays: list.filter((x) => x.s.goalMet).length,
       stands: sum((s) => s.stands), expected: sum((s) => s.expected),
       avgLongest: worked.length ? worked.reduce((a, x) => a + x.s.longest, 0) / worked.length : 0,
-      work: sum((s) => s.workMs), snoozes: sum((s) => s.snoozes), skips: sum((s) => s.skips),
+      work: sum((s) => s.workMs),
+      reminders: sum((s) => s.reminders), answered: sum((s) => s.answered), missed: sum((s) => s.missed), snoozes: sum((s) => s.snoozes), skips: sum((s) => s.skips),
     };
   }
   function streak() {
@@ -502,6 +575,7 @@
         <div class="kpi"><div class="kv">${t.workMs ? fmtDur(t.longest) : '—'}</div><div class="kl">longest sitting stretch</div></div>
         <div class="kpi"><div class="kv">${t.workMs ? fmtDur(t.workMs) : '—'}</div><div class="kl">work time tracked</div></div>
       </div>
+      <p class="small">Reminders answered: <b>${t.answered}/${t.reminders}</b>${t.missed ? ` · <span class="miss">${t.missed} missed</span>` : ''}</p>
       <p class="muted small">${t.fromNotif + tw.log.filter((e) => e.k === 'water' && e.src === 'notif' && tw.key !== t.key).length} confirmed from notifications · ${t.snoozes + (tw.key !== t.key ? tw.snoozes : 0)} snoozed · ${t.skips + (tw.key !== t.key ? tw.skips : 0)} skipped</p>`;
     const names = { water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
     const evs = (tw.key === t.key ? t.log : tw.log.concat(t.log)).slice().sort((a, b) => b.t - a.t).slice(0, 30);
@@ -523,6 +597,7 @@
       ${bars(wk, (s) => s.water / 1000, settings.waterGoal / 1000, 'var(--water)', (v) => v.toFixed(1))}
       <h3>Stand-ups</h3>
       ${bars(wk, (s) => s.stands, 0, 'var(--stand)', (v) => v)}
+      <p class="small">Reminders answered this week: <b>${a.reminders ? Math.round(100 * a.answered / a.reminders) + '%' : '—'}</b> (${a.answered}/${a.reminders})${a.missed ? ` · <span class="miss">${a.missed} missed</span>` : ''}</p>
       <p class="muted small">Work time this week: ${fmtDur(a.work)} · snoozes ${a.snoozes} · skips ${a.skips}</p>`;
   }
 
@@ -617,6 +692,8 @@
     $('s-nudgeRepeat').value = settings.nudgeRepeat;
     $('s-nudgeMax').value = settings.nudgeMax;
     $('s-checkTime').value = settings.checkTime;
+    followDraft = { f: settings.followUp, r: settings.followUpRepeats };
+    renderFollow();
     bedDraft = null;
     renderWaterPlanner();
     const wrap = $('s-days'); wrap.innerHTML = '';
@@ -634,6 +711,22 @@
 
   let modeDraft = null;
   let bedDraft = null;
+  let followDraft = null;
+  function renderFollow() {
+    const mk = (el, vals, cur, label, set) => {
+      el.innerHTML = '';
+      vals.forEach((v) => {
+        const b = document.createElement('button'); b.className = 'chip' + (v === cur ? ' on' : ''); b.textContent = label(v);
+        b.onclick = () => { set(v); renderFollow(); }; el.appendChild(b);
+      });
+    };
+    mk($('s-follow'), [0, 5, 10, 15], followDraft.f, (v) => v ? `${v} min` : 'Off', (v) => { followDraft.f = v; });
+    mk($('s-followN'), [1, 2, 3], followDraft.r, (v) => `${v}×`, (v) => { followDraft.r = v; });
+    $('s-followNRow').style.display = followDraft.f ? '' : 'none';
+    $('s-followHint').textContent = followDraft.f
+      ? `If you don't tap Done / Drank within ${followDraft.f} min, it asks again — up to ${followDraft.r}×. After that it counts as missed in Stats.`
+      : 'No follow-ups. Unanswered reminders still count as missed in Stats.';
+  }
   const BEDTIMES = ['21:00', '22:00', '23:00', '00:00', '01:00', '02:00'];
   function bedChips(container, current, onPick) {
     container.innerHTML = '';
@@ -710,6 +803,7 @@
     settings.nudgeTime = $('s-nudgeTime').value || DEFAULTS.nudgeTime;
     settings.checkTime = $('s-checkTime').value || DEFAULTS.checkTime;
     settings.bedTime = bedDraft || settings.bedTime;
+    if (followDraft) { settings.followUp = followDraft.f; settings.followUpRepeats = followDraft.r; }
   }
 
   // ---------- Wire UI ----------
@@ -721,7 +815,7 @@
     });
     $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); };
     $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); };
-    $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); };
+    $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); await reschedule(); };
     $('backupCopy').onclick = async () => {
       const txt = JSON.stringify({ app: 'fitdad', v: 1, at: new Date().toISOString(), settings, days });
       $('backupText').value = txt;

@@ -28,6 +28,15 @@ sleep 15
 adb exec-out screencap -p > smoke/05-test-alarm.png
 adb shell dumpsys notification --noredact | grep -iE "fitdad|pkg=com.dijaedadula" | head -40 > smoke/notifications.txt
 adb shell dumpsys alarm | grep -iE "com.dijaedadula.fitdad" | head -60 > smoke/alarms.txt
+# Widget: log a glass + stand-up via the widget receiver, then read stored data
+adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_WATER | tee -a smoke/steps.txt
+adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_STAND | tee -a smoke/steps.txt
+sleep 2
+adb shell run-as com.dijaedadula.fitdad cat shared_prefs/CapacitorStorage.xml > smoke/prefs.xml
+# Deep link from widget → Stats tab
+adb shell am start -a android.intent.action.VIEW -d fitdad://stats com.dijaedadula.fitdad
+sleep 5
+adb exec-out screencap -p > smoke/06-deeplink-stats.png
 adb logcat -d > smoke/logcat-full.txt
 grep -iE "Capacitor/Console|JavaScript Error|AndroidRuntime|FATAL|LocalNotification" smoke/logcat-full.txt > smoke/logcat-app.txt || true
 exit 0

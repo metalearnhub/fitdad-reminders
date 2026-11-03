@@ -21,8 +21,22 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- fitdad://start, fitdad://stats, fitdad://today (used by the widget) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="fitdad" />
+            </intent-filter>
 
         </activity>
+
+        <receiver android:name=".FitDadWidget" android:exported="true" android:label="FitDad">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/fitdad_widget_info" />
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

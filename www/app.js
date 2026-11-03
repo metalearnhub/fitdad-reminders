@@ -29,6 +29,7 @@
   const LN = isNative ? plugin('LocalNotifications') : null;
   const Prefs = isNative ? plugin('Preferences') : null;
   const AppPlugin = isNative ? plugin('App') : null;
+  const Widget = isNative ? plugin('WidgetBridge') : null;
 
   // ---------- IDs & channels ----------
   const ID = { STAND: 1000, WATER: 2000, NUDGE: 3000, CHECK: 4000, SNOOZE: 5000, TEST: 9000 };
@@ -120,8 +121,11 @@
   async function save() {
     const raw = JSON.stringify({ settings, days });
     try {
-      if (isNative) await Prefs.set({ key: 'fitdad', value: raw });
-      else localStorage.setItem('fitdad', raw);
+      if (isNative) {
+        await Prefs.set({ key: 'fitdad', value: raw });
+        await Prefs.set({ key: 'fitdad_week', value: weekLine() });
+        Widget.refresh().catch(() => {});
+      } else localStorage.setItem('fitdad', raw);
     } catch (e) { console.warn('save failed', e); }
   }
 
@@ -159,6 +163,8 @@
 
       if (AppPlugin) {
         AppPlugin.addListener('resume', async () => { await load(); autoEndIfNeeded(); render(); await reschedule(); });
+        AppPlugin.addListener('appUrlOpen', (e) => handleDeepLink(e && e.url));
+        try { const l = await AppPlugin.getLaunchUrl(); if (l && l.url) setTimeout(() => handleDeepLink(l.url), 300); } catch (_) { }
       }
     } catch (e) {
       console.error('native setup failed', e);
@@ -213,8 +219,28 @@
   }
   function closeSheet() { $('sheet').classList.remove('show'); }
 
+  // ---------- Deep links from the home-screen widget ----------
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.view === name));
+    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + name));
+    if (name === 'stats') renderStats();
+    if (name === 'settings') renderSettings();
+  }
+  async function handleDeepLink(url) {
+    if (!url || !url.startsWith('fitdad://')) return;
+    await load();
+    const what = url.replace('fitdad://', '').replace(/\/$/, '');
+    if (what === 'start') {
+      if (today().status !== 'active') startSession();
+      showTab('today');
+    } else if (what === 'stats') showTab('stats');
+    else showTab('today');
+    await save(); render(); await reschedule();
+  }
+
   // ---------- Actions from notifications ----------
   async function handleAction(ev) {
+    await load(); // pick up anything the widget logged meanwhile
     const n = ev.notification || {};
     const kind = (n.extra && n.extra.kind) || '';
     const a = ev.actionId;
@@ -460,6 +486,11 @@
     return `<span class="delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${sign} ${Math.abs(d).toFixed(dec)}${unit} vs last week</span>`;
   };
 
+  function weekLine() {
+    const a = summarize(lastNDays(7));
+    return `7 days: avg ${(a.avgWater / 1000).toFixed(1)} L · goal ${a.goalDays}/7 · ${a.stands} stand-ups · streak ${streak()}`;
+  }
+
   function renderStats() {
     const t = dayStats(logicalKey());
     const tw = t;
@@ -685,10 +716,7 @@
   function wire() {
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.onclick = () => {
-        document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === tab));
-        document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab.dataset.view));
-        if (tab.dataset.view === 'settings') renderSettings();
-        if (tab.dataset.view === 'stats') renderStats();
+        showTab(tab.dataset.view);
       };
     });
     $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); };

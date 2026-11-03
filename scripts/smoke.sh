@@ -40,9 +40,9 @@ sleep 5
 adb exec-out screencap -p > smoke/06-deeplink-stats.png
 # Notification action "Done" with the app killed (cold start), then "Drank" while running
 adb shell am force-stop com.dijaedadula.fitdad
-adb shell am start -n com.dijaedadula.fitdad/.MainActivity --ei LocalNotificationId 1000 --es LocalNotificationUserAction done --es LocalNotficationObject '{\"id\":1000,\"extra\":{\"kind\":\"stand\"}}'
+adb shell "am start -n com.dijaedadula.fitdad/.MainActivity --ei LocalNotificationId 1000 --es LocalNotificationUserAction done --es LocalNotficationObject '{\"id\":1000,\"extra\":{\"kind\":\"stand\"}}'"
 sleep 12
-adb shell am start -n com.dijaedadula.fitdad/.MainActivity --ei LocalNotificationId 2000 --es LocalNotificationUserAction drank --es LocalNotficationObject '{\"id\":2000,\"extra\":{\"kind\":\"water\"}}'
+adb shell "am start -n com.dijaedadula.fitdad/.MainActivity --ei LocalNotificationId 2000 --es LocalNotificationUserAction drank --es LocalNotficationObject '{\"id\":2000,\"extra\":{\"kind\":\"water\"}}'"
 sleep 6
 adb exec-out screencap -p > smoke/07-after-notif-actions.png
 adb shell run-as com.dijaedadula.fitdad cat shared_prefs/CapacitorStorage.xml > smoke/prefs2.xml

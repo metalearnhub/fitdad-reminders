@@ -1,0 +1,11 @@
+{
+  "appId": "com.dijaedadula.fitdad",
+  "appName": "FitDad",
+  "webDir": "www",
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_fitdad",
+      "iconColor": "#F59E0B"
+    }
+  }
+}

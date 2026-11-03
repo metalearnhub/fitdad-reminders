@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0E1116" />
+  <title>FitDad</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo">FD</span> FitDad</div>
+    <div class="date" id="todayLabel"></div>
+  </header>
+
+  <main>
+    <!-- TODAY -->
+    <section class="view active" id="view-today">
+      <div class="card status-card" id="statusCard">
+        <div class="status-row">
+          <span class="pill" id="statusPill">Not started</span>
+          <span class="muted" id="sessionInfo"></span>
+        </div>
+        <h1 id="statusHeadline">Ready to work?</h1>
+        <p class="muted" id="statusSub">Tap Start when you sit down. Reminders begin right away.</p>
+        <div class="btn-row" id="sessionButtons"></div>
+      </div>
+
+      <div class="card water-card">
+        <div class="water-head">
+          <h2>Water</h2>
+          <span class="muted" id="waterGoalLabel"></span>
+        </div>
+        <div class="water-body">
+          <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="ring-bg" cx="60" cy="60" r="52" />
+            <circle class="ring-fg" id="waterRing" cx="60" cy="60" r="52" />
+          </svg>
+          <div class="ring-text">
+            <div class="big" id="waterAmount">0.00 L</div>
+            <div class="muted" id="waterLeft"></div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost" id="waterMinus" aria-label="Undo one glass">−</button>
+          <button class="btn water" id="waterPlus">+ Glass</button>
+        </div>
+      </div>
+
+      <div class="card stand-card">
+        <div class="water-head">
+          <h2>Stand-ups</h2>
+          <span class="muted" id="standEveryLabel"></span>
+        </div>
+        <div class="stand-row">
+          <div class="big" id="standCount">0</div>
+          <button class="btn stand" id="standPlus">I stood up ✓</button>
+        </div>
+        <p class="muted small" id="nextLabel"></p>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="card">
+        <h2>Reminders</h2>
+        <label class="field"><span>Stand up every (minutes)</span>
+          <input type="number" id="s-standEvery" min="10" max="180" step="5" /></label>
+        <label class="field"><span>Water reminder every (minutes)</span>
+          <input type="number" id="s-waterEvery" min="15" max="240" step="5" /></label>
+        <label class="field"><span>Daily water goal (ml)</span>
+          <input type="number" id="s-waterGoal" min="1000" max="6000" step="100" /></label>
+        <label class="field"><span>Glass size (ml)</span>
+          <input type="number" id="s-glass" min="100" max="1000" step="50" /></label>
+        <label class="field"><span>Auto-end session after (hours)</span>
+          <input type="number" id="s-maxHours" min="2" max="16" step="1" /></label>
+      </div>
+
+      <div class="card">
+        <h2>Morning nudge</h2>
+        <p class="muted small">If you haven't tapped Start by this time, FitDad alarms you and keeps asking until you answer.</p>
+        <label class="field"><span>First nudge at</span>
+          <input type="time" id="s-nudgeTime" /></label>
+        <label class="field"><span>Ask again every (minutes)</span>
+          <input type="number" id="s-nudgeRepeat" min="15" max="180" step="5" /></label>
+        <label class="field"><span>Max nudges per day</span>
+          <input type="number" id="s-nudgeMax" min="1" max="10" step="1" /></label>
+        <div class="field"><span>Nudge on these days</span>
+          <div class="days" id="s-days"></div></div>
+        <label class="field"><span>Water check-in at</span>
+          <input type="time" id="s-checkTime" /></label>
+      </div>
+
+      <button class="btn primary full" id="saveSettings">Save settings</button>
+
+      <div class="card">
+        <h2>Make alarms reliable</h2>
+        <ol class="small muted tips">
+          <li>Allow notifications when asked.</li>
+          <li>Phone Settings → Apps → FitDad → Battery → <b>Unrestricted</b>.</li>
+          <li>Notifications → FitDad → make sure sound is <b>on</b> for "Stand-up & nudges".</li>
+        </ol>
+        <div class="btn-row">
+          <button class="btn ghost" id="testAlarm">Test alarm (10s)</button>
+          <button class="btn ghost" id="testWater">Test water (10s)</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CAR -->
+    <section class="view" id="view-car">
+      <div class="card">
+        <h2>Car care 🚗</h2>
+        <p class="muted">Coming in Phase 2: oil changes, filters, tires, brakes, battery, registration and insurance reminders — by date or mileage — plus a service log.</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabs">
+    <button class="tab active" data-view="today">Today</button>
+    <button class="tab" data-view="car">Car</button>
+    <button class="tab" data-view="settings">Settings</button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -81,3 +81,12 @@ h2 { font-size: 17px; margin: 0 0 10px; }
   background: var(--text); color: #111; padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px;
   transition: all .25s ease; pointer-events: none; max-width: 90vw; text-align: center; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.center { text-align: center; margin: 10px 0 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 6px; }
+.seg { display: flex; gap: 6px; }
+.chip { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 999px;
+  padding: 8px 12px; font-size: 13px; font-weight: 700; }
+.chip.on { background: rgba(56,189,248,.15); border-color: var(--water); color: var(--water); }
+.plan { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 14px;
+  line-height: 1.5; margin: 10px 0 0; }

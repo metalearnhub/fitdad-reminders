@@ -139,3 +139,22 @@ body.is-beta .beta-only { display: inline-block; }
 .form input { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 11px; font-size: 15px; width: 100%; color-scheme: dark; }
 .row2 { display: flex; gap: 10px; }
 .sheet-card { max-height: 88vh; overflow-y: auto; }
+
+.seg-wide { display: flex; gap: 8px; margin: 0 0 14px; }
+.seg-wide .chip { flex: 1; padding: 11px; font-size: 14px; }
+.kv small { font-size: 13px; font-weight: 700; color: var(--muted); }
+.insights { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.45; }
+.insights > li { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.insights .ins-bad { border-color: rgba(248,113,113,.45); }
+.insights .ins-good { border-color: rgba(52,211,153,.45); }
+.insights .ins-tip { color: var(--muted); }
+.insights ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.tablewrap { overflow-x: auto; margin: 0 -4px; }
+table.lb { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.lb th { color: var(--muted); font-weight: 700; text-align: right; padding: 6px 5px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.lb td { text-align: right; padding: 8px 5px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.lb th:first-child, table.lb td:first-child, table.lb th:nth-child(2), table.lb td:nth-child(2) { text-align: left; }
+table.lb td.good { color: var(--stand); } table.lb td.bad { color: var(--danger); }
+table.lb tbody tr { cursor: pointer; }
+.form label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 15px; }
+.form label.check input { width: 20px; height: 20px; }

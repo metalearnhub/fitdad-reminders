@@ -156,6 +156,7 @@ window.UpkeepCar = function (api) {
   function closeSheet() { $('sheet').classList.remove('show'); sheetOpen = null; }
   async function commit(msg) { await api.save(); render(); await api.reschedule(); if (msg) toast(msg); }
 
+  let view = 'maint', period = 'month', lbSort = 'eff';
   function render() {
     const el = $('carRoot'); if (!el) return;
     const d = data(); const c = car();
@@ -188,8 +189,16 @@ window.UpkeepCar = function (api) {
           <div class="kpi"><div class="kv ${counts.overdue ? 'miss' : ''}">${counts.overdue}</div><div class="kl">overdue · ${counts.soon} due soon</div></div>
           <div class="kpi"><div class="kv">${peso(spent)}</div><div class="kl">spent in ${yr}</div></div>
         </div>
-        <button class="btn primary full" id="carOdo" style="margin:4px 0 0">Update odometer</button>
+        <div class="btn-row" style="margin-top:4px">
+          <button class="btn ghost" id="carOdo">Update km</button>
+          <button class="btn water" id="carFuelAdd" style="flex:1">⛽ Log fill-up</button>
+        </div>
       </div>
+      <div class="seg seg-wide">
+        <button class="chip ${view === 'maint' ? 'on' : ''}" data-view="maint">🔧 Maintenance</button>
+        <button class="chip ${view === 'fuel' ? 'on' : ''}" data-view="fuel">⛽ Fuel</button>
+      </div>
+      ${view === 'fuel' ? fuelHTML(c) : `
       <div class="card">
         <div class="water-head"><h2>Maintenance</h2><button class="linkbtn" id="carAddItem" style="margin:0">+ Add item</button></div>
         <ul class="carlist">
@@ -209,14 +218,19 @@ window.UpkeepCar = function (api) {
             <li><span>${h.icon || '🔧'} ${esc(h.name)}<br><span class="muted small">${fmtKm(h.km)}${h.notes ? ' · ' + esc(h.notes) : ''}</span></span>
             <span class="muted" style="text-align:right">${fmtDate(h.t)}${h.cost ? '<br>' + peso(h.cost) : ''}</span></li>`).join('') || '<li class="muted">Nothing logged yet.</li>'}
         </ul>
-      </div>
+      </div>`}
       <button class="btn ghost full" id="carAddAnother">+ Add another car</button>`;
 
     el.querySelectorAll('[data-car]').forEach((b) => { b.onclick = async () => { d.selected = b.dataset.car; await api.save(); render(); }; });
     el.querySelectorAll('[data-item]').forEach((li) => { li.onclick = () => itemSheet(li.dataset.item); });
     $('carEdit').onclick = () => carForm(c);
     $('carOdo').onclick = () => odoSheet(c);
-    $('carAddItem').onclick = () => templateSheet(c);
+    if ($('carAddItem')) $('carAddItem').onclick = () => templateSheet(c);
+    $('carFuelAdd').onclick = () => fuelForm(c);
+    el.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => { view = b.dataset.view; render(); }; });
+    el.querySelectorAll('[data-period]').forEach((b) => { b.onclick = () => { period = b.dataset.period; render(); }; });
+    el.querySelectorAll('[data-sort]').forEach((b) => { b.onclick = () => { lbSort = b.dataset.sort; render(); }; });
+    el.querySelectorAll('[data-fill]').forEach((r) => { r.onclick = () => fuelForm(c, r.dataset.fill); });
     $('carAddAnother').onclick = () => carForm();
     if ($('carStarter')) $('carStarter').onclick = () => addStarter(c);
   }
@@ -382,6 +396,243 @@ window.UpkeepCar = function (api) {
       $('mdDone').onclick = async () => {
         markDone(item.id, { date: $('mdDate').value, km: $('mdKm').value, cost: $('mdCost').value, notes: $('mdNotes').value.trim() });
         closeSheet(); await commit();
+      };
+    });
+  }
+
+
+  // ================= FUEL (full-tank method) =================
+  // Each fill: { id, t, km, liters, total, price (₱/L), full, station }
+  // Efficiency is measured between two FULL fills: km driven ÷ liters added since the previous full tank.
+  const fills = (c) => (c.fuel = c.fuel || []).slice().sort((a, b) => a.km - b.km || a.t - b.t);
+  function segments(c) {
+    const f = fills(c), out = [];
+    let lastFull = null, liters = 0, cost = 0;
+    f.forEach((x) => {
+      if (lastFull) { liters += x.liters || 0; cost += x.total || 0; }
+      if (x.full) {
+        if (lastFull && liters > 0 && x.km > lastFull.km) {
+          const dist = x.km - lastFull.km;
+          out.push({ fill: x, from: lastFull, t: x.t, dist, liters, cost, eff: dist / liters, l100: liters / dist * 100, perKm: cost / dist, price: x.price || (x.total && x.liters ? x.total / x.liters : 0) });
+        }
+        lastFull = x; liters = 0; cost = 0;
+      }
+    });
+    return out;
+  }
+  function periodRange(p, offset = 0) {
+    const n = new Date();
+    if (p === 'all') return [0, Infinity];
+    if (p === 'month') return [new Date(n.getFullYear(), n.getMonth() - offset, 1).getTime(), new Date(n.getFullYear(), n.getMonth() - offset + 1, 1).getTime()];
+    if (p === 'quarter') { const q = Math.floor(n.getMonth() / 3) - offset; return [new Date(n.getFullYear(), q * 3, 1).getTime(), new Date(n.getFullYear(), q * 3 + 3, 1).getTime()]; }
+    return [new Date(n.getFullYear() - offset, 0, 1).getTime(), new Date(n.getFullYear() - offset + 1, 0, 1).getTime()];
+  }
+  const PERIOD_LABEL = { month: 'This month', quarter: 'This quarter', year: 'This year', all: 'All time' };
+  const PREV_LABEL = { month: 'last month', quarter: 'last quarter', year: 'last year' };
+  function stats(c, p, offset = 0) {
+    const [a, b] = periodRange(p, offset);
+    const segs = segments(c).filter((s) => s.t >= a && s.t < b);
+    const fl = fills(c).filter((x) => x.t >= a && x.t < b && x.liters > 0);
+    const dist = segs.reduce((s, x) => s + x.dist, 0), lit = segs.reduce((s, x) => s + x.liters, 0), segCost = segs.reduce((s, x) => s + x.cost, 0);
+    const spend = fl.reduce((s, x) => s + (x.total || 0), 0), liters = fl.reduce((s, x) => s + x.liters, 0);
+    return { segs, fills: fl, eff: lit ? dist / lit : null, perKm: dist ? segCost / dist : null, dist, spend, liters, price: liters ? spend / liters : null };
+  }
+  const f1 = (n) => (n == null ? '—' : n.toFixed(1));
+  const f2 = (n) => (n == null ? '—' : n.toFixed(2));
+  function deltaTag(cur, prev, betterHigh, unit, dec = 1) {
+    if (cur == null || prev == null || !prev) return '';
+    const pct = (cur - prev) / prev * 100;
+    if (Math.abs(pct) < 0.5) return `<span class="delta">＝ same as ${'$'}{x}</span>`;
+    const good = betterHigh ? pct > 0 : pct < 0;
+    return `<span class="delta ${good ? 'up' : 'down'}">${pct > 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}%</span>`;
+  }
+  function miniBars(vals, labels, color, avg, fmt) {
+    if (!vals.length) return '<p class="muted small">Not enough data yet.</p>';
+    const W = 320, H = 140, pb = 18, pt = 16, max = Math.max(...vals, avg || 0) * 1.05, min = 0;
+    const bw = W / vals.length;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart">`;
+    if (avg) { const y = pt + (H - pb - pt) * (1 - (avg - min) / (max - min)); svg += `<line x1="0" x2="${W}" y1="${y}" y2="${y}" class="goal-line"/>`; }
+    vals.forEach((v, i) => {
+      const h = (H - pb - pt) * ((v - min) / (max - min)), x = i * bw + bw * 0.18;
+      svg += `<rect x="${x}" y="${H - pb - h}" width="${bw * 0.64}" height="${Math.max(h, 1)}" rx="3" fill="${color}"/>`;
+      if (vals.length <= 12) svg += `<text x="${x + bw * 0.32}" y="${H - pb - h - 4}" class="bar-val">${fmt(v)}</text>`;
+      svg += `<text x="${x + bw * 0.32}" y="${H - 4}" class="bar-lbl">${labels[i]}</text>`;
+    });
+    return svg + '</svg>';
+  }
+
+  function insights(c) {
+    const segs = segments(c);
+    const out = [];
+    if (segs.length < 2) {
+      out.push({ t: 'info', m: segs.length ? 'One more full-tank fill-up and trends will appear here.' : 'Fill up to FULL, log it, then log every fill-up after. Efficiency is calculated from one full tank to the next.' });
+      return out;
+    }
+    const all = segs.reduce((s, x) => s + x.dist, 0) / segs.reduce((s, x) => s + x.liters, 0);
+    const recent = segs.slice(-2);
+    const rEff = recent.reduce((s, x) => s + x.dist, 0) / recent.reduce((s, x) => s + x.liters, 0);
+    const best = segs.reduce((a, b) => (b.eff > a.eff ? b : a));
+    const diff = (rEff - all) / all * 100;
+    if (diff <= -8) {
+      out.push({ t: 'bad', m: `Efficiency is down <b>${Math.abs(diff).toFixed(0)}%</b> lately (${f1(rEff)} vs your usual ${f1(all)} km/L).` });
+      const its = itemsOf(c).map((i) => ({ i, info: dueInfo(i, c) }));
+      const flag = (re) => its.find((x) => re.test(x.i.name));
+      const check = [];
+      check.push('🛞 <b>Tire pressure</b> — under-inflated tires are the #1 cause. Check when cold, match the sticker on the driver door.');
+      [[/air filter/i, '💨 <b>Air filter</b>'], [/oil/i, '🛢️ <b>Engine oil</b>'], [/spark/i, '⚡ <b>Spark plugs</b>'], [/tire rotation/i, '🔄 <b>Tire rotation / alignment</b>'], [/brake/i, '🛑 <b>Brakes</b> (a dragging caliper burns fuel)'], [/PMS/i, '🔧 <b>PMS</b>']].forEach(([re, label]) => {
+        const x = flag(re);
+        if (x && x.info.status !== 'ok') check.push(`${label} — <span class="${x.info.status === 'overdue' ? 'miss' : ''}">${dueText(x.info)}</span>`);
+      });
+      if (!flag(/air filter/i)) check.push('💨 <b>Air filter</b> — a clogged filter cuts mileage; not in your schedule yet.');
+      check.push('🚦 Driving pattern — heavy traffic, long idling, more aircon or extra load all lower km/L.');
+      out.push({ t: 'list', m: check });
+    } else if (diff >= 5) {
+      out.push({ t: 'good', m: `Efficiency is up <b>${diff.toFixed(0)}%</b> lately (${f1(rEff)} vs ${f1(all)} km/L). Keep it up.` });
+    } else {
+      out.push({ t: 'info', m: `Steady at about <b>${f1(rEff)} km/L</b> (your average is ${f1(all)}).` });
+    }
+    out.push({ t: 'info', m: `Best tank: <b>${f1(best.eff)} km/L</b> on ${fmtDate(best.t)} (${fmtKm(best.dist)}).` });
+    const priced = fills(c).filter((x) => x.price);
+    if (priced.length >= 3) {
+      const last = priced[priced.length - 1].price, prev = priced.slice(-4, -1).reduce((s, x) => s + x.price, 0) / Math.min(3, priced.length - 1);
+      const pd = (last - prev) / prev * 100;
+      if (Math.abs(pd) >= 2) out.push({ t: pd > 0 ? 'bad' : 'good', m: `Fuel price ${pd > 0 ? 'up' : 'down'} <b>${Math.abs(pd).toFixed(1)}%</b>: ₱${f2(last)}/L vs ₱${f2(prev)}/L recently.` });
+    }
+    // tire-pressure habit reminder if not tracked
+    if (!itemsOf(c).some((i) => /tire pressure/i.test(i.name))) out.push({ t: 'tip', m: 'Tip: add a "Tire pressure check" item every 1 month in Maintenance — the cheapest way to protect km/L.' });
+    return out;
+  }
+
+  function fuelHTML(c) {
+    const cur = stats(c, period), prev = period === 'all' ? null : stats(c, period, 1);
+    const segsAll = segments(c);
+    const last = segsAll[segsAll.length - 1];
+    const recent = segsAll.slice(-12);
+    const lb = cur.segs.slice().sort((a, b) => (lbSort === 'eff' ? b.eff - a.eff : b.t - a.t));
+    const medal = (i) => (lbSort === 'eff' ? ['🥇', '🥈', '🥉'][i] || i + 1 : '');
+    const pv = PREV_LABEL[period];
+    // monthly breakdown (last 12 months with data)
+    const months = {};
+    segsAll.forEach((s) => { const k = new Date(s.t).toISOString().slice(0, 7); (months[k] = months[k] || { dist: 0, lit: 0 }); months[k].dist += s.dist; months[k].lit += s.liters; });
+    fills(c).forEach((f) => { if (!f.liters) return; const k = new Date(f.t).toISOString().slice(0, 7); (months[k] = months[k] || { dist: 0, lit: 0 }); months[k].spend = (months[k].spend || 0) + (f.total || 0); months[k].fl = (months[k].fl || 0) + f.liters; });
+    const mk = Object.keys(months).sort().slice(-12).reverse();
+    const ins = insights(c);
+    return `
+      <div class="card">
+        <div class="water-head"><h2>Fuel efficiency</h2><span class="muted small">${last ? 'last tank ' + f1(last.eff) + ' km/L' : ''}</span></div>
+        <div class="chips">${['month', 'quarter', 'year', 'all'].map((p) => `<button class="chip ${p === period ? 'on' : ''}" data-period="${p}">${PERIOD_LABEL[p]}</button>`).join('')}</div>
+        <div class="kpis">
+          <div class="kpi"><div class="kv water-c">${f1(cur.eff)}<small> km/L</small></div><div class="kl">avg efficiency${cur.eff ? ' · ' + f1(100 / cur.eff) + ' L/100km' : ''}</div>${pv ? deltaTag(cur.eff, prev.eff, true).replace('${x}', pv) : ''}</div>
+          <div class="kpi"><div class="kv">₱${f2(cur.perKm)}</div><div class="kl">cost per km</div>${pv ? deltaTag(cur.perKm, prev.perKm, false).replace('${x}', pv) : ''}</div>
+          <div class="kpi"><div class="kv">₱${f2(cur.price)}</div><div class="kl">avg price per liter</div>${pv ? deltaTag(cur.price, prev.price, false).replace('${x}', pv) : ''}</div>
+          <div class="kpi"><div class="kv">${peso(cur.spend)}</div><div class="kl">${f1(cur.liters)} L · ${cur.fills.length} fill-up${cur.fills.length === 1 ? '' : 's'}</div>${pv ? deltaTag(cur.spend, prev.spend, false).replace('${x}', pv) : ''}</div>
+        </div>
+        ${pv && prev.eff ? `<p class="muted small">vs ${pv}: ${f1(prev.eff)} km/L · ₱${f2(prev.price)}/L · ${peso(prev.spend)}</p>` : ''}
+      </div>
+
+      <div class="card">
+        <h2>Insights & advice</h2>
+        <ul class="insights">${ins.map((x) => x.t === 'list' ? `<li class="ins-list"><b>Check these:</b><ul>${x.m.map((m) => `<li>${m}</li>`).join('')}</ul></li>` : `<li class="ins-${x.t}">${x.m}</li>`).join('')}</ul>
+      </div>
+
+      <div class="card">
+        <h2>Last ${recent.length || ''} tanks</h2>
+        <h3>km per liter — dashed line = your average</h3>
+        ${miniBars(recent.map((s) => s.eff), recent.map((s) => new Date(s.t).toLocaleDateString([], { month: 'numeric', day: 'numeric' })), 'var(--water)', segsAll.length ? segsAll.reduce((a, s) => a + s.dist, 0) / segsAll.reduce((a, s) => a + s.liters, 0) : 0, (v) => v.toFixed(1))}
+        <h3>Price per liter (₱)</h3>
+        ${(() => { const pf = fills(c).filter((x) => x.price).slice(-12); return miniBars(pf.map((x) => x.price), pf.map((x) => new Date(x.t).toLocaleDateString([], { month: 'numeric', day: 'numeric' })), 'var(--amber)', 0, (v) => v.toFixed(0)); })()}
+      </div>
+
+      <div class="card">
+        <div class="water-head"><h2>Leaderboard</h2><span class="muted small">${PERIOD_LABEL[period]}</span></div>
+        <div class="seg" style="margin:6px 0 8px">
+          <button class="chip ${lbSort === 'eff' ? 'on' : ''}" data-sort="eff">Best km/L</button>
+          <button class="chip ${lbSort === 'date' ? 'on' : ''}" data-sort="date">Latest</button>
+        </div>
+        ${lb.length ? `<div class="tablewrap"><table class="lb">
+          <thead><tr><th>#</th><th>Date</th><th>km</th><th>L</th><th>km/L</th><th>₱/L</th><th>₱/km</th></tr></thead>
+          <tbody>${lb.map((s, i) => `<tr data-fill="${s.fill.id}"><td>${medal(i)}</td><td>${new Date(s.t).toLocaleDateString([], { month: 'short', day: 'numeric' })}</td><td>${Math.round(s.dist)}</td><td>${f1(s.liters)}</td><td class="${s.eff >= (cur.eff || 0) ? 'good' : 'bad'}"><b>${f1(s.eff)}</b></td><td>${f2(s.price)}</td><td>${f2(s.perKm)}</td></tr>`).join('')}</tbody>
+        </table></div>` : '<p class="muted small">No complete tanks in this period yet.</p>'}
+      </div>
+
+      <div class="card">
+        <h2>By month</h2>
+        ${mk.length ? `<div class="tablewrap"><table class="lb">
+          <thead><tr><th>Month</th><th>km/L</th><th>₱/L</th><th>Liters</th><th>Spent</th></tr></thead>
+          <tbody>${mk.map((k) => { const m = months[k]; return `<tr><td>${new Date(k + '-01T00:00').toLocaleDateString([], { month: 'short', year: '2-digit' })}</td><td><b>${m.lit ? f1(m.dist / m.lit) : '—'}</b></td><td>${m.fl ? f2(m.spend / m.fl) : '—'}</td><td>${m.fl ? f1(m.fl) : '—'}</td><td>${m.spend ? peso(m.spend) : '—'}</td></tr>`; }).join('')}</tbody>
+        </table></div>` : '<p class="muted small">Nothing yet.</p>'}
+      </div>
+
+      <div class="card">
+        <h2>All fill-ups</h2>
+        <ul class="timeline">${fills(c).slice().reverse().slice(0, 40).map((f) => `
+          <li data-fill="${f.id}"><span>${f.full ? '⛽' : '◐'} ${fmtKm(f.km)}${f.station ? ' · ' + esc(f.station) : ''}<br><span class="muted small">${f.liters ? f1(f.liters) + ' L' : 'starting point'}${f.price ? ' · ₱' + f2(f.price) + '/L' : ''}${f.full ? '' : ' · partial'}</span></span>
+          <span class="muted" style="text-align:right">${fmtDate(f.t)}${f.total ? '<br>' + peso(f.total) : ''}</span></li>`).join('') || '<li class="muted">No fill-ups yet.</li>'}</ul>
+      </div>`;
+  }
+
+  function fuelForm(c, fillId) {
+    const f = fillId ? (c.fuel || []).find((x) => x.id === fillId) : null;
+    const first = !f && !(c.fuel || []).length;
+    const lastKm = currentKm(c);
+    sheet(`
+      <div class="sheet-icon">⛽</div><h2>${f ? 'Edit fill-up' : first ? 'Starting point' : 'Log fill-up'}</h2>
+      ${first ? '<p class="muted small">Fill your tank to FULL, then enter the odometer. Liters and price are optional for this first entry — efficiency starts from your next full tank.</p>' : ''}
+      <div class="form">
+        <div class="row2">
+          <label>Date<input id="fuDate" type="date" value="${isoDay(f ? f.t : Date.now())}" /></label>
+          <label>Odometer (km)<input id="fuKm" type="number" inputmode="numeric" value="${f ? f.km : ''}" placeholder="${lastKm ? 'last ' + lastKm : ''}" /></label>
+        </div>
+        <div class="row2">
+          <label>Liters<input id="fuL" type="number" inputmode="decimal" step="0.01" value="${f && f.liters ? f.liters : ''}" /></label>
+          <label>Price per liter (₱)<input id="fuP" type="number" inputmode="decimal" step="0.01" value="${f && f.price ? f2(f.price) : ''}" /></label>
+        </div>
+        <div class="row2">
+          <label>Total paid (₱)<input id="fuT" type="number" inputmode="decimal" step="0.01" value="${f && f.total ? f.total : ''}" /></label>
+          <label>Station<input id="fuS" placeholder="e.g. Shell Aguinaldo" value="${esc(f ? f.station : '')}" /></label>
+        </div>
+        <label class="check"><input id="fuFull" type="checkbox" ${!f || f.full ? 'checked' : ''} /> Filled to full tank</label>
+        <p class="muted small" id="fuHint" style="margin:0">Enter any two of liters, price, total — the third fills in.</p>
+      </div>
+      <div class="sheet-btns">
+        <button class="btn water" id="fuSave">${f ? 'Save' : 'Log it'}</button>
+        ${f ? '<button class="btn danger" id="fuDel">Delete</button>' : ''}
+        <button class="btn ghost" id="fuCancel">Cancel</button>
+      </div>`, () => {
+      const L = $('fuL'), P = $('fuP'), T = $('fuT');
+      let lastEdited = [];
+      const touch = (id) => { lastEdited = [id, ...lastEdited.filter((x) => x !== id)].slice(0, 2); autofill(); };
+      function autofill() {
+        const l = parseFloat(L.value), p = parseFloat(P.value), t = parseFloat(T.value);
+        const keep = new Set(lastEdited);
+        if (keep.has('L') && keep.has('P') && l && p) T.value = (l * p).toFixed(2);
+        else if (keep.has('L') && keep.has('T') && l && t) P.value = (t / l).toFixed(2);
+        else if (keep.has('P') && keep.has('T') && p && t) L.value = (t / p).toFixed(2);
+      }
+      L.oninput = () => touch('L'); P.oninput = () => touch('P'); T.oninput = () => touch('T');
+      $('fuCancel').onclick = closeSheet;
+      $('fuSave').onclick = async () => {
+        const km = Math.round(Number($('fuKm').value));
+        if (!(km > 0)) { toast('Enter the odometer reading'); return; }
+        const liters = parseFloat(L.value) || 0, total = parseFloat(T.value) || 0;
+        const price = parseFloat(P.value) || (liters && total ? total / liters : 0);
+        if (!first && !f && !liters) { toast('Enter the liters you added'); return; }
+        const others = (c.fuel || []).filter((x) => !f || x.id !== f.id);
+        const prevMax = others.reduce((m, x) => Math.max(m, x.km), 0);
+        if (!f && others.length && km <= prevMax) { toast(`Odometer must be higher than your last fill-up (${fmtKm(prevMax)})`); return; }
+        const t = $('fuDate').value === isoDay(Date.now()) ? Date.now() : new Date($('fuDate').value + 'T12:00:00').getTime();
+        const rec = { t, km, liters, price, total: total || (liters && price ? +(liters * price).toFixed(2) : 0), full: $('fuFull').checked, station: $('fuS').value.trim() };
+        c.fuel = c.fuel || [];
+        if (f) Object.assign(f, rec); else c.fuel.push({ id: uid(), ...rec });
+        if (km > currentKm(c)) addOdo(c, km, Math.min(t, Date.now()));
+        closeSheet(); view = 'fuel';
+        const segs = segments(c), seg = segs[segs.length - 1];
+        await commit(!f && seg && seg.fill.km === km ? `${f1(seg.eff)} km/L this tank · ₱${f2(seg.perKm)}/km` : f ? 'Saved' : first ? 'Starting point saved — log your next full tank' : 'Fill-up logged');
+      };
+      if ($('fuDel')) $('fuDel').onclick = async () => {
+        if (!confirm('Delete this fill-up?')) return;
+        c.fuel = c.fuel.filter((x) => x.id !== f.id);
+        closeSheet(); await commit('Deleted');
       };
     });
   }

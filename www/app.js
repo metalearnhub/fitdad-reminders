@@ -161,10 +161,11 @@
         ],
       });
 
-      LN.addListener('localNotificationActionPerformed', (ev) => handleAction(ev).catch(console.error));
+      // Every notification tap/button is queued natively (MainActivity), so it survives a cold start
+      LN.addListener('localNotificationActionPerformed', () => drainActions().catch(console.error));
 
       if (AppPlugin) {
-        AppPlugin.addListener('resume', async () => { await load(); autoEndIfNeeded(); render(); await reschedule(); });
+        AppPlugin.addListener('resume', async () => { await load(); autoEndIfNeeded(); render(); await reschedule(); await drainActions(); });
         AppPlugin.addListener('appUrlOpen', (e) => handleDeepLink(e && e.url));
         try { const l = await AppPlugin.getLaunchUrl(); if (l && l.url) setTimeout(() => handleDeepLink(l.url), 300); } catch (_) { }
       }
@@ -176,6 +177,7 @@
   // ---------- Confirmations (single source of truth for analytics) ----------
   function logEvent(r, k, src, ml) { r.log.push(ml ? { t: Date.now(), k, src, ml } : { t: Date.now(), k, src }); }
   function confirmWater(src) {
+    clearShade('water');
     const r = waterRec(); markDayStart(r); r.water += settings.glass; logEvent(r, 'water', src, settings.glass);
     toast(`+${settings.glass} ml logged · ${liters(Math.max(0, settings.waterGoal - r.water))} to go`);
   }
@@ -184,8 +186,10 @@
     for (let i = r.log.length - 1; i >= 0; i--) if (r.log[i].k === 'water') { r.water = Math.max(0, r.water - r.log[i].ml); r.log.splice(i, 1); return; }
     r.water = Math.max(0, r.water - settings.glass);
   }
-  function confirmStand(src) { const r = today(); r.stands++; logEvent(r, 'stand', src); toast('Nice. Stand-up logged.'); }
-  function skip(kind, src) { logEvent(kind === 'stand' ? today() : waterRec(), kind === 'stand' ? 'skip_s' : 'skip_w', src); toast('Skipped'); }
+  function confirmStand(src) { const r = today(); r.stands++; logEvent(r, 'stand', src); toast('Nice. Stand-up logged.'); clearShade('stand'); }
+  function clearShade(kind) { if (isNative) Widget.clearDelivered({ kind }).catch(() => {}); }
+  function skip(kind, src) {
+    clearShade(kind); logEvent(kind === 'stand' ? today() : waterRec(), kind === 'stand' ? 'skip_s' : 'skip_w', src); toast('Skipped'); }
 
   // In-app confirm sheet — opening a notification lands here, so tap = same choices as the buttons
   function openSheet(kind) {
@@ -241,6 +245,22 @@
   }
 
   // ---------- Actions from notifications ----------
+  let draining = false;
+  async function drainActions() {
+    if (!isNative || draining) return;
+    draining = true;
+    try {
+      const raw = (await Prefs.get({ key: 'upkeep_actions' })).value;
+      if (!raw) return;
+      await Prefs.remove({ key: 'upkeep_actions' });
+      for (const q of JSON.parse(raw) || []) {
+        let notification = {};
+        try { notification = JSON.parse(q.obj || '{}'); } catch (_) { }
+        await handleAction({ actionId: q.action, notification });
+      }
+    } finally { draining = false; }
+  }
+
   async function handleAction(ev) {
     await load(); // pick up anything the widget logged meanwhile
     const n = ev.notification || {};
@@ -268,22 +288,21 @@
   }
 
   async function snooze(kind, minutes) {
-    if (!isNative) { toast(`Snoozed ${minutes} min`); return; }
-    const at = new Date(Date.now() + minutes * 60000);
     const isStand = kind === 'stand';
-    logEvent(isStand ? today() : waterRec(), isStand ? 'snooze_s' : 'snooze_w', 'notif');
-    await LN.schedule({ notifications: [{
-      id: ID.SNOOZE + Math.floor(Math.random() * 900),
+    const r = isStand ? today() : waterRec();
+    logEvent(r, isStand ? 'snooze_s' : 'snooze_w', 'notif');
+    if (!isNative) { toast(`Snoozed ${minutes} min`); return; }
+    await Widget.scheduleExtra({ items: [{
+      id: (isStand ? 5000 : 5500) + Math.floor(Math.random() * 400),
+      at: Date.now() + minutes * 60000,
       title: isStand ? 'Stand up now 🧍' : 'Drink water 💧',
       body: isStand ? 'Snooze is over. Get up and move for 2 minutes.' : `Have a ${settings.glass} ml glass.`,
-      channelId: isStand ? CH_ALARM : CH_WATER,
-      actionTypeId: isStand ? 'STAND' : 'WATER',
-      smallIcon: 'ic_stat_fitdad', iconColor: '#F59E0B',
-      extra: { kind },
-      schedule: { at, allowWhileIdle: true },
+      channel: isStand ? CH_ALARM : CH_WATER, type: isStand ? 'STAND' : 'WATER',
+      kind, follow: true, of: Date.now() + 90000, // stays quiet if you answer anywhere before it rings
     }] });
     toast(`Snoozed ${minutes} min`);
   }
+
 
   // ---------- Session control ----------
   function startSession() {
@@ -304,6 +323,7 @@
     closeSegment(t, Date.now());
     t.status = 'ended'; t.pausedAt = null;
     logEvent(t, 'endwork', 'app');
+    clearShade('stand');
     setTimeout(showWorkSummary, 150);
   }
 
@@ -484,31 +504,35 @@
         const stale = del.filter((d) => { const k = kindOf(d.id); return k && answeredBetween(r, k, now - 3 * 3600000, Infinity) && lastAnswerAfterDelivery(r, k); });
         if (stale.length) await LN.removeDeliveredNotifications({ notifications: stale });
       } catch (_) { }
+      // old plugin-scheduled reminders (from earlier versions) are retired — Upkeep's own scheduler takes over
       if (managed.length) await LN.cancel({ notifications: managed.map((p) => ({ id: p.id })) });
-      if (list.length) {
-        await LN.schedule({
-          notifications: list.map((x) => ({
-            id: x.id, title: x.title, body: x.body, channelId: x.channelId, actionTypeId: x.actionTypeId,
-            extra: x.extra, smallIcon: 'ic_stat_fitdad', iconColor: '#F59E0B', autoCancel: true,
-            schedule: { at: new Date(x.at), allowWhileIdle: true },
-          })),
-        });
-      }
+      // gap = spacing between reminders of the same kind; the phone skips a reminder if you already
+      // stood up / drank within half that gap (from the app, widget or a notification)
+      const gapOf = (x) => {
+        if (x.extra.kind === 'stand') return settings.standEvery * 60000;
+        if (x.extra.kind !== 'water') return 0;
+        const ws = list.filter((y) => y.extra.kind === 'water' && !y.extra.follow).map((y) => y.at).sort((a, b) => a - b);
+        const k = ws.indexOf(x.at);
+        return k > 0 ? x.at - ws[k - 1] : (ws[1] ? ws[1] - ws[0] : 60 * 60000);
+      };
+      await Widget.schedule({ items: list.map((x) => ({
+        id: x.id, at: x.at, title: x.title, body: x.body, channel: x.channelId, type: x.actionTypeId,
+        kind: x.extra.kind, follow: !!x.extra.follow, of: x.extra.of || 0, gap: x.extra.follow ? 0 : gapOf(x),
+      })) });
     } catch (e) { console.error('reschedule failed', e); toast('Could not schedule reminders'); }
   }
 
   async function testNotif(kind) {
     if (!isNative) { toast('Test works on the phone app only'); return; }
     const isStand = kind === 'stand';
-    await LN.schedule({ notifications: [{
-      id: ID.TEST + (isStand ? 1 : 2), title: isStand ? 'Test: Stand up 🧍' : 'Test: Drink water 💧',
-      body: 'If you heard this, reminders work.', channelId: isStand ? CH_ALARM : CH_WATER,
-      actionTypeId: isStand ? 'STAND' : 'WATER', extra: { kind: 'test' },
-      smallIcon: 'ic_stat_fitdad', iconColor: '#F59E0B',
-      schedule: { at: new Date(Date.now() + 10000), allowWhileIdle: true },
+    await Widget.scheduleExtra({ items: [{
+      id: ID.TEST + (isStand ? 1 : 2), at: Date.now() + 10000,
+      title: isStand ? 'Test: Stand up 🧍' : 'Test: Drink water 💧', body: 'If you heard this, reminders work.',
+      channel: isStand ? CH_ALARM : CH_WATER, type: isStand ? 'STAND' : 'WATER', kind: 'test',
     }] });
     toast('Test alarm in 10 seconds — lock your phone');
   }
+
 
 
   // ---------- Analytics ----------
@@ -924,6 +948,7 @@
     await setupNative();
     await save();
     await reschedule();
+    await drainActions();
     // refresh UI every minute (day rollover, next-reminder label)
     setInterval(() => { autoEndIfNeeded(); render(); updateNextLabel(buildNotifications()); }, 60000);
   }

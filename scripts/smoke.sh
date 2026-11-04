@@ -52,6 +52,35 @@ adb shell "am start -n com.dijaedadula.fitdad/.MainActivity"
 sleep 5
 adb exec-out screencap -p > smoke/08-done-working.png
 adb shell run-as com.dijaedadula.fitdad cat shared_prefs/CapacitorStorage.xml > smoke/prefs2.xml
+# ---- Reminder gate test: jump the clock and check which reminders actually show ----
+jump() { # jump device clock to T0 + $1 minutes
+  NEW=$(( T0 + $1 * 60 ))
+  adb shell cmd alarm set-time $(( NEW * 1000 )) 2>&1 | tee -a smoke/gate.txt
+  adb shell "date @$NEW" >/dev/null 2>&1 || true
+  echo "clock -> $(adb shell date)" | tee -a smoke/gate.txt
+  sleep 12
+}
+shade() { echo "== $1" >> smoke/gate.txt; adb shell dumpsys notification --noredact | grep -oE "pkg=com.dijaedadula.fitdad[^ ]* id=[0-9]+" | sort -u >> smoke/gate.txt; adb shell dumpsys notification --noredact | grep -E "android.title=" | grep -iE "stand|water|start|did you" >> smoke/gate.txt; }
+adb root >/dev/null 2>&1; adb wait-for-device; sleep 3
+adb shell am force-stop com.dijaedadula.fitdad
+adb shell "am start -n com.dijaedadula.fitdad/.MainActivity"; sleep 12
+tap_text "Back to work" || tap_text "Start day" || true
+sleep 4
+adb shell input keyevent KEYCODE_HOME; sleep 2
+adb shell cmd notification cancel_all >/dev/null 2>&1 || true
+T0=$(adb shell date +%s | tr -d '\r')
+echo "T0=$T0" | tee -a smoke/gate.txt
+adb shell run-as com.dijaedadula.fitdad cat shared_prefs/upkeep_sched.xml | head -c 1500 > smoke/sched.txt
+jump 20
+adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_STAND >/dev/null
+echo "widget: stood up at +20" >> smoke/gate.txt
+jump 31
+shade "+31 min (stand reminder due; stood up 11 min ago via widget -> expect NO stand)"
+jump 40
+adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_ENDWORK >/dev/null
+echo "widget: done working at +40" >> smoke/gate.txt
+jump 95
+shade "+95 min (stand reminders due but work ended -> expect NO stand; water not answered -> expect water)"
 adb logcat -d > smoke/logcat-full.txt
 grep -iE "Capacitor/Console|JavaScript Error|AndroidRuntime|FATAL|LocalNotification" smoke/logcat-full.txt > smoke/logcat-app.txt || true
 exit 0

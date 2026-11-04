@@ -28,6 +28,30 @@ public class WidgetBridgePlugin extends Plugin {
         call.resolve(new JSObject());
     }
 
+    /** Replace the planned wellness reminders (checked against your latest actions when they fire). */
+    @PluginMethod
+    public void schedule(PluginCall call) {
+        try {
+            ReminderGate.replaceAll(getContext(), call.getArray("items", new com.getcapacitor.JSArray()));
+            call.resolve(new JSObject());
+        } catch (Exception e) { call.reject("schedule failed: " + e.getMessage()); }
+    }
+
+    /** Add one-off reminders (snooze, test) without touching the plan. */
+    @PluginMethod
+    public void scheduleExtra(PluginCall call) {
+        try {
+            ReminderGate.addItems(getContext(), call.getArray("items", new com.getcapacitor.JSArray()));
+            call.resolve(new JSObject());
+        } catch (Exception e) { call.reject("schedule failed: " + e.getMessage()); }
+    }
+
+    @PluginMethod
+    public void clearDelivered(PluginCall call) {
+        ReminderGate.clearDelivered(getContext(), call.getString("kind", ""));
+        call.resolve(new JSObject());
+    }
+
     /** Opens "Save as…" (Downloads, Drive, etc.) and writes the backup JSON there. */
     @PluginMethod
     public void exportBackup(PluginCall call) {

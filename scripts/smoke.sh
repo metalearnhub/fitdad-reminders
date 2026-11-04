@@ -62,6 +62,8 @@ jump() { # jump device clock to T0 + $1 minutes
 }
 shade() { echo "== $1" >> smoke/gate.txt; adb shell dumpsys notification --noredact | grep -oE "pkg=com.dijaedadula.fitdad[^ ]* id=[0-9]+" | sort -u >> smoke/gate.txt; adb shell dumpsys notification --noredact | grep -E "android.title=" | grep -iE "stand|water|start|did you" >> smoke/gate.txt; }
 adb root >/dev/null 2>&1; adb wait-for-device; sleep 3
+adb shell cmd alarm set-timezone Asia/Manila 2>/dev/null || adb shell setprop persist.sys.timezone Asia/Manila
+sleep 2; echo "tz: $(adb shell date)" | tee -a smoke/gate.txt
 adb shell am force-stop com.dijaedadula.fitdad
 adb shell "am start -n com.dijaedadula.fitdad/.MainActivity"; sleep 12
 adb shell "am start -a android.intent.action.VIEW -d fitdad://start com.dijaedadula.fitdad"

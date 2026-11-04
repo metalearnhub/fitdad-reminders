@@ -183,3 +183,4 @@ table.lb tbody tr { cursor: pointer; }
 .calc-keys button.op { color: var(--amber); }
 .calc-chips { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
 .calc-result { margin-top: 12px; font-size: 16px; min-height: 22px; }
+#s-waterPreview { white-space: pre-line; }

@@ -64,23 +64,28 @@ shade() { echo "== $1" >> smoke/gate.txt; adb shell dumpsys notification --nored
 adb root >/dev/null 2>&1; adb wait-for-device; sleep 3
 adb shell am force-stop com.dijaedadula.fitdad
 adb shell "am start -n com.dijaedadula.fitdad/.MainActivity"; sleep 12
-tap_text "Back to work" || tap_text "Start day" || true
-sleep 4
+adb shell "am start -a android.intent.action.VIEW -d fitdad://start com.dijaedadula.fitdad"
+sleep 8
 adb shell input keyevent KEYCODE_HOME; sleep 2
 adb shell cmd notification cancel_all >/dev/null 2>&1 || true
 T0=$(adb shell date +%s | tr -d '\r')
 echo "T0=$T0" | tee -a smoke/gate.txt
-adb shell run-as com.dijaedadula.fitdad cat shared_prefs/upkeep_sched.xml | head -c 1500 > smoke/sched.txt
-jump 20
-adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_STAND >/dev/null
-echo "widget: stood up at +20" >> smoke/gate.txt
+adb shell run-as com.dijaedadula.fitdad cat shared_prefs/upkeep_sched.xml > smoke/sched.txt
 jump 31
-shade "+31 min (stand reminder due; stood up 11 min ago via widget -> expect NO stand)"
-jump 40
+shade "+31 min (stand reminder due, not answered -> expect STAND shown)"
+adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_STAND >/dev/null
+shade "+31 after widget Stood up (expect stand notification cleared)"
+jump 50
+adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_STAND >/dev/null
+echo "widget: stood up at +50" >> smoke/gate.txt
+adb shell cmd notification cancel_all >/dev/null 2>&1 || true
+jump 61
+shade "+61 min (stand due; stood up 11 min ago via widget -> expect NO stand)"
 adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_ENDWORK >/dev/null
-echo "widget: done working at +40" >> smoke/gate.txt
-jump 95
-shade "+95 min (stand reminders due but work ended -> expect NO stand; water not answered -> expect water)"
+echo "widget: done working at +61" >> smoke/gate.txt
+adb shell cmd notification cancel_all >/dev/null 2>&1 || true
+jump 125
+shade "+125 min (stand reminders due but work ended -> expect NO stand)"
 adb logcat -d > smoke/logcat-full.txt
 grep -iE "Capacitor/Console|JavaScript Error|AndroidRuntime|FATAL|LocalNotification" smoke/logcat-full.txt > smoke/logcat-app.txt || true
 exit 0

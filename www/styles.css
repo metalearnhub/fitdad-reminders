@@ -121,3 +121,4 @@ textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px s
 .center-chips { justify-content: center; }
 .miss { color: var(--danger); font-weight: 700; }
 .paste { margin-top: 12px; } .paste summary { cursor: pointer; padding: 6px 0; } .paste textarea { margin-top: 8px; }
+#s-waterPreview { white-space: pre-line; }

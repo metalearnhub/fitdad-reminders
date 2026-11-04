@@ -412,8 +412,7 @@
         const step = settings.waterEvery * 60000;
         for (let ts = cw.start + step; ts <= cw.end && times.length < left; ts += step) if (ts > now + 30000) times.push(ts);
       } else {
-        const step = Math.max(15 * 60000, (cw.end - now) / left);
-        for (let k = 0; k < left; k++) { const ts = Math.round(now + step * (k + 0.5)); if (ts <= cw.end) times.push(ts); }
+        times.push(...autoWaterTimes(wr, cw, now, left));
       }
       times.slice(0, 40).forEach((ts, k) => {
         const glassNo = total - left + k + 1;
@@ -744,8 +743,10 @@
     $('waterGoalLabel').textContent = `Goal ${liters(settings.waterGoal)}`;
     const total = totalGlasses(), gl = glassesLeft(wt.water);
     const cwin = currentWindow();
+    const pace = waterPace(wt, cwin, Date.now());
+    const paceTxt = !pace || gl === 0 ? '' : pace.diff >= 2 ? ` · ahead by ${pace.diff} — slow down` : pace.diff <= -2 ? ` · behind by ${-pace.diff}` : ' · on pace';
     $('waterPlan').textContent = !cwin.start && gl > 0 ? `${total} glasses × ${settings.glass} ml — plan starts when you tap Start (or log a glass)` : (gl > 0
-      ? `Glass ${total - gl + 1} of ${total} · ${gl} × ${settings.glass} ml left`
+      ? `Glass ${total - gl + 1} of ${total} · ${gl} × ${settings.glass} ml left${paceTxt}`
       : `All ${total} glasses done — reminders stopped for today`)
       ;
     $('bedLabel').textContent = `Bedtime ${fmtTime(new Date(cwin.bedAt))} · last glass by ${fmtTime(new Date(cwin.end))}`;
@@ -813,6 +814,36 @@
     });
   }
   // Plan from right now: how much time is left until the last glass, and how many glasses remain
+  // Auto water plan: the glasses still needed, spaced EVENLY from your last glass (or start) to the
+  // last-glass time before bed — so the final glass lands right at bedtime minus 1 h, never hours early.
+  // If you're behind, the next one comes within 15 min and the rest spread over the time left.
+  // Safety: never schedule faster than ~0.8 L per hour (kidneys clear roughly 0.8–1 L/h)
+  const minWaterGap = (glass) => Math.max(20, Math.round(glass / 800 * 60)) * 60000;
+  function autoWaterTimes(r, cw, now, left, glass = settings.glass) {
+    if (!left || !cw.end || cw.end <= now) return [];
+    const minGap = minWaterGap(glass);
+    const drinks = (r.log || []).filter((e) => e.k === 'water').map((e) => e.t);
+    const anchor = Math.max(drinks.length ? Math.max(...drinks) : (cw.start || now), cw.start || 0);
+    let step = Math.max(minGap, (cw.end - anchor) / left);
+    const out = [];
+    if (anchor + step >= now + 60000) {
+      for (let k = 1; k <= left; k++) out.push(Math.round(anchor + k * step));
+    } else {
+      const first = now + Math.min(15 * 60000, Math.max(60000, (cw.end - now) / left));
+      out.push(first);
+      if (left > 1) { step = Math.max(minGap, (cw.end - first) / (left - 1)); for (let k = 1; k < left; k++) out.push(Math.round(first + k * step)); }
+    }
+    return out.filter((t) => t <= cw.end + 1000);
+  }
+  // Where you should be right now if drinking evenly from start to last-glass time
+  function waterPace(r, cw, now) {
+    if (!cw.start || !cw.end || cw.end <= cw.start) return null;
+    const f = Math.min(1, Math.max(0, (now - cw.start) / (cw.end - cw.start)));
+    const target = settings.waterGoal * f;
+    const diff = Math.round(((r.water || 0) - target) / settings.glass);
+    return { target, diff };
+  }
+
   function planFromNow(goal, glass, every, fixed, bed) {
     const now = Date.now();
     const w = currentWindow(bed);
@@ -820,8 +851,12 @@
     const minsLeft = Math.max(0, Math.round((w.end - from) / 60000));
     const drank = waterRec().water;
     const left = Math.max(0, Math.ceil((goal - drank) / glass));
-    const iv = fixed ? every : (left ? Math.max(15, Math.floor(minsLeft / left)) : 0);
-    return { w, from, minsLeft, left, iv, fits: fixed ? Math.floor(minsLeft / every) : left };
+    let times = [];
+    if (!fixed && left) {
+      times = autoWaterTimes(waterRec(), { ...w, start: w.start || now }, now, left, glass);
+    }
+    const iv = fixed ? every : (times.length > 1 ? Math.round((times[1] - times[0]) / 60000) : minsLeft);
+    return { w, from, minsLeft, left, iv, times, fits: fixed ? Math.floor(minsLeft / every) : times.length };
   }
   const TEMPLATES = [
     { label: '2.0 L · 8 × 250', goal: 2000, glass: 250 },
@@ -857,9 +892,11 @@
     if (p.left === 0) msg += 'Goal already reached today. 🎉';
     else if (p.minsLeft === 0) msg += `It's past your last-glass time (${fmtTime(new Date(p.w.end))}). Tomorrow's plan starts when you start your day.`;
     else {
-      msg += `${p.w.start ? 'From now' : 'If you start now'} (${fmtTime(new Date())}) until ${fmtTime(new Date(p.w.end))} (1 h before your ${fmtTime(new Date(p.w.bedAt))} bedtime) = ${h(p.minsLeft)} → ${p.left} glass${p.left > 1 ? 'es' : ''} left, one every ${p.iv} min.`;
+      msg += `${p.left} glass${p.left > 1 ? 'es' : ''} left until ${fmtTime(new Date(p.w.end))} (1 h before your ${fmtTime(new Date(p.w.bedAt))} bedtime) = ${h(p.minsLeft)} → one every ${p.iv} min, last glass at ${p.times.length ? fmtTime(new Date(p.times[p.times.length - 1])) : fmtTime(new Date(p.w.end))}.`;
+      if (!fixed && p.times.length) msg += `\nPlan: ${p.times.map((t) => fmtTime(new Date(t))).join(' · ')}`;
+      if (!fixed && p.fits < p.left) msg += `\n⚠ Only ${p.fits} of ${p.left} fit safely before bed (max ~0.8 L per hour). Don't force the rest tonight — start earlier tomorrow.`;
       if (fixed && p.fits < p.left) msg += ` ⚠ Only ${p.fits} fit before bed at every ${every} min — shorten the interval or use bigger glasses.`;
-      else msg += ' Reminders stop once the goal is met.';
+      else if (fixed || p.fits >= p.left) msg += '\nReminders stop once the goal is met.';
     }
     $('s-waterPreview').textContent = msg;
   }

@@ -3,6 +3,7 @@ package com.dijaedadula.fitdad;
 import android.content.Intent;
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
+import android.app.NotificationManager;
 import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -41,12 +42,17 @@ public class MainActivity extends BridgeActivity {
             String kind = extra != null ? extra.optString("kind") : "";
             if ("done".equals(action) && "stand".equals(kind)) {
                 FitDadWidget.log(this, false, "notif");
+                ReminderGate.clearDelivered(this, "stand");
             } else if ("drank".equals(action) && ("water".equals(kind) || "check".equals(kind))) {
                 FitDadWidget.log(this, true, "notif");
+                ReminderGate.clearDelivered(this, "water");
             } else if ("endwork".equals(action)) {
                 FitDadWidget.endWork(this, "notif");
+                ReminderGate.clearDelivered(this, "stand");
             }
-            // Queue every action for the web app (it drains this on start/resume), so nothing is lost on a cold start
+            int nid = i.getIntExtra("LocalNotificationId", -1);
+            if (nid >= 0) ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(nid);
+            // Queue every action for the web app (drained on start/resume), so nothing is lost on a cold start
             SharedPreferences sp = getSharedPreferences(FitDadWidget.PREFS, MODE_PRIVATE);
             JSONArray q;
             try { q = new JSONArray(sp.getString("upkeep_actions", "[]")); } catch (Exception e) { q = new JSONArray(); }

@@ -44,9 +44,11 @@ public class FitDadWidget extends AppWidgetProvider {
         String a = intent.getAction();
         if (ACTION_WATER.equals(a) || ACTION_STAND.equals(a)) {
             log(ctx, ACTION_WATER.equals(a), "widget");
+            ReminderGate.clearDelivered(ctx, ACTION_WATER.equals(a) ? "water" : "stand");
             updateAll(ctx);
         } else if (ACTION_ENDWORK.equals(a)) {
             endWork(ctx, "widget");
+            ReminderGate.clearDelivered(ctx, "stand");
             updateAll(ctx);
         }
     }

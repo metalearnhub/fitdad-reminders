@@ -131,6 +131,11 @@
     } catch (e) { console.warn('save failed', e); }
   }
 
+  // One-at-a-time queue: resume, deep links and notification actions each load → change → save,
+  // so running them together could let one overwrite the other's change.
+  let chain = Promise.resolve();
+  const serial = (fn) => (chain = chain.then(fn).catch((e) => console.error(e)));
+
   // ---------- Native setup ----------
   async function setupNative() {
     if (!isNative) return;
@@ -162,12 +167,12 @@
       });
 
       // Every notification tap/button is queued natively (MainActivity), so it survives a cold start
-      LN.addListener('localNotificationActionPerformed', () => drainActions().catch(console.error));
+      LN.addListener('localNotificationActionPerformed', () => serial(drainActions));
 
       if (AppPlugin) {
-        AppPlugin.addListener('resume', async () => { await load(); autoEndIfNeeded(); render(); await reschedule(); await drainActions(); });
-        AppPlugin.addListener('appUrlOpen', (e) => handleDeepLink(e && e.url));
-        try { const l = await AppPlugin.getLaunchUrl(); if (l && l.url) setTimeout(() => handleDeepLink(l.url), 300); } catch (_) { }
+        AppPlugin.addListener('resume', () => serial(async () => { await load(); autoEndIfNeeded(); render(); await reschedule(); await drainActions(); }));
+        AppPlugin.addListener('appUrlOpen', (e) => serial(() => handleDeepLink(e && e.url)));
+        try { const l = await AppPlugin.getLaunchUrl(); if (l && l.url) setTimeout(() => serial(() => handleDeepLink(l.url)), 300); } catch (_) { }
       }
     } catch (e) {
       console.error('native setup failed', e);
@@ -948,7 +953,7 @@
     await setupNative();
     await save();
     await reschedule();
-    await drainActions();
+    await serial(drainActions);
     // refresh UI every minute (day rollover, next-reminder label)
     setInterval(() => { autoEndIfNeeded(); render(); updateNextLabel(buildNotifications()); }, 60000);
   }

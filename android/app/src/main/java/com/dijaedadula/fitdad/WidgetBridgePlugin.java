@@ -71,6 +71,66 @@ public class WidgetBridgePlugin extends Plugin {
         call.resolve(new JSObject());
     }
 
+    // ---------- Car receipts: stored as files inside the app ----------
+
+    private File receiptFile(String id) {
+        File d = new File(getContext().getFilesDir(), "receipts");
+        if (!d.exists()) d.mkdirs();
+        return new File(d, id);
+    }
+
+    /** Save a receipt (base64 data URL) under an id like "r_abc123.jpg". */
+    @PluginMethod
+    public void receiptSave(PluginCall call) {
+        String id = call.getString("id"), data = call.getString("data");
+        if (id == null || data == null || id.contains("/")) { call.reject("bad id/data"); return; }
+        try {
+            String b64 = data.contains(",") ? data.substring(data.indexOf(',') + 1) : data;
+            byte[] bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
+            try (FileOutputStream out = new FileOutputStream(receiptFile(id))) { out.write(bytes); }
+            call.resolve(new JSObject());
+        } catch (Exception e) { call.reject("Could not save receipt: " + e.getMessage()); }
+    }
+
+    @PluginMethod
+    public void receiptRead(PluginCall call) {
+        String id = call.getString("id");
+        if (id == null || id.contains("/")) { call.reject("bad id"); return; }
+        File f = receiptFile(id);
+        if (!f.exists()) { call.reject("missing"); return; }
+        try (FileInputStream in = new FileInputStream(f)) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] b = new byte[8192]; int n;
+            while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+            String mime = id.endsWith(".pdf") ? "application/pdf" : id.endsWith(".png") ? "image/png" : "image/jpeg";
+            JSObject ret = new JSObject();
+            ret.put("data", "data:" + mime + ";base64," + android.util.Base64.encodeToString(buf.toByteArray(), android.util.Base64.NO_WRAP));
+            call.resolve(ret);
+        } catch (Exception e) { call.reject("Could not read receipt: " + e.getMessage()); }
+    }
+
+    @PluginMethod
+    public void receiptDelete(PluginCall call) {
+        String id = call.getString("id");
+        if (id != null && !id.contains("/")) receiptFile(id).delete();
+        call.resolve(new JSObject());
+    }
+
+    /** Open a receipt (e.g. a PDF) in the phone's viewer. */
+    @PluginMethod
+    public void receiptOpen(PluginCall call) {
+        String id = call.getString("id");
+        if (id == null || id.contains("/") || !receiptFile(id).exists()) { call.reject("missing"); return; }
+        try {
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", receiptFile(id));
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(uri, id.endsWith(".pdf") ? "application/pdf" : "image/*");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve(new JSObject());
+        } catch (Exception e) { call.reject("No app can open this file: " + e.getMessage()); }
+    }
+
     // ---------- Restore points: kept inside the app AND copied to Downloads/Upkeep ----------
 
     private File backupDir() {

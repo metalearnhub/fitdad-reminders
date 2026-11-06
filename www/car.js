@@ -16,6 +16,9 @@ window.UpkeepCar = function (api) {
     { name: 'Oil filter', km: 5000, months: 6, icon: '🧴', fuel: false, why: 'Clogged filter starves the engine of clean oil.' },
     { name: 'PMS (preventive maintenance)', km: 10000, months: 6, icon: '🔧', fuel: true, why: 'Full check catches small issues early.' },
     { name: 'Tire pressure check', km: 0, months: 1, icon: '🎈', fuel: true, why: 'Under-inflated tires are the #1 cause of lost km/L.' },
+    { name: 'Engine oil level check', km: 1000, months: 1, icon: '🛢️', fuel: true, why: 'Check the dipstick; low oil wears the engine fast.' },
+    { name: 'Coolant level check', km: 2000, months: 1, icon: '🌡️', fuel: false, why: 'Low coolant leads to overheating.' },
+    { name: 'Brake fluid level check', km: 5000, months: 3, icon: '💧', fuel: false, why: 'A dropping level can mean worn pads or a leak.' },
     { name: 'Tire rotation', km: 10000, months: 6, icon: '🛞', fuel: true, why: 'Uneven wear increases rolling resistance.' },
     { name: 'Wheel alignment', km: 20000, months: 12, icon: '📐', fuel: true, why: 'Misalignment drags tires and burns fuel.' },
     { name: 'Tire replacement', km: 50000, months: 60, icon: '🛞', fuel: true, why: 'Rubber ages out at ~5 years even with tread left.' },
@@ -35,13 +38,53 @@ window.UpkeepCar = function (api) {
     { name: 'Battery replacement', km: 0, months: 24, icon: '🔋', fuel: true, why: 'A weak battery strains the alternator.' },
     { name: 'Cabin / aircon filter', km: 15000, months: 12, icon: '🌬️', fuel: false, why: 'Dirty filter weakens airflow; AC works harder.' },
     { name: 'Aircon cleaning', km: 0, months: 12, icon: '❄️', fuel: true, why: 'A dirty AC system makes the compressor work harder.' },
+    { name: 'Aircon refrigerant check', km: 0, months: 24, icon: '🧊', fuel: true, why: 'Low freon makes the AC run longer and blow warm.' },
     { name: 'Shock absorbers', km: 80000, months: 60, icon: '🔩', fuel: false, why: 'Worn shocks hurt handling and wear tires faster.' },
     { name: 'Wiper blades', km: 0, months: 12, icon: '🌧️', fuel: false, why: 'Streaking blades are unsafe in rain.' },
     { name: 'LTO registration', km: 0, months: 12, icon: '📄', fuel: false, why: 'Avoid fines and apprehension.' },
     { name: 'Insurance renewal', km: 0, months: 12, icon: '🛡️', fuel: false, why: 'Stay covered.' },
   ];
+  // Car systems — parts and records are grouped by these
+  const GROUPS = [
+    { id: 'engine', name: 'Engine', icon: '⚙️' },
+    { id: 'tires', name: 'Tires & wheels', icon: '🛞' },
+    { id: 'brakes', name: 'Brakes', icon: '🛑' },
+    { id: 'fluids', name: 'Fluids & cooling', icon: '💧' },
+    { id: 'electrical', name: 'Electrical & battery', icon: '🔋' },
+    { id: 'aircon', name: 'Air conditioning', icon: '❄️' },
+    { id: 'suspension', name: 'Suspension & steering', icon: '🔩' },
+    { id: 'body', name: 'Body, glass & lights', icon: '🚘' },
+    { id: 'papers', name: 'Papers & insurance', icon: '📄' },
+    { id: 'other', name: 'Other', icon: '🔧' },
+  ];
+  const GROUP_OF = {
+    'change oil': 'engine', 'oil filter': 'engine', 'pms (preventive maintenance)': 'engine', 'air filter': 'engine', 'spark plugs': 'engine',
+    'oxygen (o2) sensor': 'engine', 'fuel filter': 'engine', 'throttle body cleaning': 'engine', 'drive / fan belt': 'engine', 'timing belt': 'engine',
+    'tire pressure check': 'tires', 'engine oil level check': 'engine', 'coolant level check': 'fluids', 'brake fluid level check': 'brakes', 'tire rotation': 'tires', 'wheel alignment': 'tires', 'tire replacement': 'tires',
+    'brake pads': 'brakes', 'brake fluid': 'brakes',
+    'transmission fluid': 'fluids', 'power steering fluid': 'fluids', 'coolant flush': 'fluids',
+    'battery check': 'electrical', 'battery replacement': 'electrical',
+    'cabin / aircon filter': 'aircon', 'aircon cleaning': 'aircon', 'aircon refrigerant check': 'aircon',
+    'shock absorbers': 'suspension', 'wiper blades': 'body', 'lto registration': 'papers', 'insurance renewal': 'papers',
+  };
+  const GROUP_RE = [[/air ?con|a\/c|\bac\b|compressor|condenser|evaporator|freon|refrigerant|blower/i, 'aircon'], [/tire|tyre|wheel|rim|align/i, 'tires'],
+    [/brake|caliper|rotor|disc/i, 'brakes'], [/battery|alternator|starter|light|bulb|fuse|wiring/i, 'electrical'], [/coolant|radiator|fluid|thermostat|water pump/i, 'fluids'],
+    [/shock|strut|steering|rack|tie rod|ball joint|bushing|suspension/i, 'suspension'], [/oil|filter|spark|belt|engine|plug|sensor|throttle|injector/i, 'engine'],
+    [/wiper|glass|windshield|mirror|paint|door|body/i, 'body'], [/lto|registration|insurance/i, 'papers']];
+  const groupOf = (x) => x.group || GROUP_OF[String(x.name || '').toLowerCase()] || (GROUP_RE.find(([re]) => re.test(x.name || '')) || [0, 'other'])[1];
+  const G = (id) => GROUPS.find((g) => g.id === id) || GROUPS[GROUPS.length - 1];
+
   // Recommended set for a new car (all pre-checked)
-  const STARTER = ['Change oil', 'Oil filter', 'PMS (preventive maintenance)', 'Tire pressure check', 'Tire rotation', 'Wheel alignment', 'Tire replacement', 'Air filter', 'Spark plugs', 'Brake pads', 'Brake fluid', 'Drive / fan belt', 'Battery replacement', 'Coolant flush', 'LTO registration', 'Insurance renewal'];
+  // Quick checks: a reading (dipstick level / tank mark / tire PSI) plus how much you topped up
+  const CHECK_OF = { 'engine oil level check': 'oil', 'coolant level check': 'coolant', 'brake fluid level check': 'brake', 'tire pressure check': 'tire' };
+  const checkKind = (item) => item.check || CHECK_OF[String(item.name).toLowerCase()] || null;
+  const LEVELS = {
+    oil: [['low', 'Below L / add'], ['half', 'Halfway'], ['full', 'At F (full)'], ['over', 'Above F']],
+    coolant: [['low', 'Below MIN'], ['ok', 'Between MIN–MAX'], ['max', 'At MAX']],
+    brake: [['low', 'Below MIN'], ['ok', 'Between MIN–MAX'], ['max', 'At MAX']],
+  };
+  const LOW = ['low'];
+  const STARTER = ['Change oil', 'Oil filter', 'PMS (preventive maintenance)', 'Tire pressure check', 'Engine oil level check', 'Coolant level check', 'Tire rotation', 'Wheel alignment', 'Tire replacement', 'Air filter', 'Spark plugs', 'Brake pads', 'Brake fluid', 'Drive / fan belt', 'Battery replacement', 'Coolant flush', 'LTO registration', 'Insurance renewal'];
   const FUEL_RE = /oil|tire|tyre|align|air filter|spark|o2|oxygen|fuel filter|throttle|belt|transmission|battery|aircon|pms/i;
   const tplFor = (item) => TEMPLATES.find((t) => t.name.toLowerCase() === String(item.name).toLowerCase());
   const affectsFuel = (item) => (item.fuel != null ? item.fuel : tplFor(item) ? tplFor(item).fuel : FUEL_RE.test(item.name));
@@ -166,6 +209,14 @@ window.UpkeepCar = function (api) {
         if (t - last >= 7 * DAY) out.push({ id: ID_BASE + 900 + data().cars.indexOf(c), title: `🚗 Update ${c.name}'s odometer`, body: 'Log the current km so Upkeep can predict your next service.', channelId: CH, actionTypeId: 'CARODO', extra: { kind: 'carodo', carId: c.id }, at: t });
       }
     });
+    // warranty ending in 14 days (date-based warranties)
+    let wn = 0;
+    data().history.forEach((r) => {
+      const c = data().cars.find((x) => x.id === r.carId); if (!c || wn >= 150) return;
+      const wi = warrantyInfo(r, c); if (!wi || wi.expired || wi.until == null) return;
+      const at = new Date(wi.until - 14 * DAY); at.setHours(9, 0, 0, 0);
+      if (at.getTime() > now) out.push({ id: ID_BASE + 600 + wn++, title: `🛡 Warranty ending soon: ${r.name}`, body: `${c.name} — warranty until ${fmtDate(wi.until)}. Check it now if something's wrong.`, channelId: CH, actionTypeId: '', extra: { kind: 'carwarranty', recId: r.id }, at: at.getTime() });
+    });
     return out.slice(0, 200);
   }
 
@@ -220,15 +271,15 @@ window.UpkeepCar = function (api) {
     });
   }
 
-  let view = 'maint', period = 'all', lbSort = 'eff';
+  let view = 'maint', period = 'all', lbSort = 'eff', recGroup = 'all';
+  const closedGroups = new Set(); // systems you collapsed
   function render() {
     const el = $('carRoot'); if (!el) return;
     const d = data(); const c = car();
     if (!c) {
       el.innerHTML = `
         <div class="card">
-          <span class="pill beta">Beta</span>
-          <h2 style="margin-top:10px">Car care 🚗</h2>
+          <h2>Car care 🚗</h2>
           <p class="muted">Track oil changes, PMS, tires, LTO registration and insurance — by kilometers or months, whichever comes first.</p>
           <button class="btn primary full" id="carAdd">Add your car</button>
         </div>`;
@@ -249,50 +300,55 @@ window.UpkeepCar = function (api) {
     el.innerHTML = `
       ${d.cars.length > 1 ? `<div class="chips">${d.cars.map((x) => `<button class="chip ${x.id === c.id ? 'on' : ''}" data-car="${x.id}">${esc(x.name)}</button>`).join('')}</div>` : ''}
       <div class="card">
-        <div class="status-row"><span class="pill beta">Beta</span><button class="linkbtn" id="carEdit" style="margin:0">Edit car</button></div>
+        <div class="status-row"><span class="muted small">Your car</span><button class="linkbtn" id="carEdit" style="margin:0">Edit car</button></div>
         <h1 style="margin-bottom:2px">${esc(c.name)}</h1>
         <p class="muted" style="margin-top:0">${esc(c.plate || '')}</p>
         <div class="kpis">
           <div class="kpi"><div class="kv">${fmtKm(currentKm(c))}</div><div class="kl">odometer · ${c.odo.length ? 'updated ' + fmtDate(c.odo[c.odo.length - 1].t) : 'not set'}</div></div>
           <div class="kpi"><div class="kv">${rate ? Math.round(rate) + ' km' : '—'}</div><div class="kl">${rate ? `avg per day · ~${fmtKm(rate * 30)}/mo` : pts.length >= 2 ? 'avg per day (needs readings on different days)' : 'avg per day (log km or a fill-up again)'}</div></div>
           <div class="kpi"><div class="kv ${next && next.info.status === 'overdue' ? 'miss' : ''}" style="font-size:16px">${next ? (next.i.icon || '🔧') + ' ' + esc(next.i.name) : '—'}</div><div class="kl">${next ? 'next: ' + dueText(next.info).replace(/^Due /, '') : 'no parts tracked yet'}${counts.overdue || counts.soon ? ` · ${counts.overdue} overdue, ${counts.soon} soon` : ''}</div></div>
-          <div class="kpi"><div class="kv">${peso(spent)}</div><div class="kl">spent in ${yr} · fuel ${peso(fuelSpend)} · service ${peso(svc)}</div></div>
+          <div class="kpi"><div class="kv">${peso(spent)}</div><div class="kl">spent in ${yr} · fuel ${peso(fuelSpend)} · repairs ${peso(svc)}</div></div>
         </div>
         <div class="btn-row" style="margin-top:4px">
           <button class="btn ghost" id="carOdo">Update km</button>
           <button class="btn water" id="carFuelAdd" style="flex:1">⛽ Log fill-up</button>
         </div>
+        <button class="btn primary full" id="carRecAdd" style="margin:10px 0 0">🧾 Log repair / replacement</button>
       </div>
       ${healthHTML(c, its)}
       <div class="seg seg-wide">
         <button class="chip ${view === 'maint' ? 'on' : ''}" data-view="maint">🔧 Maintenance</button>
         <button class="chip ${view === 'fuel' ? 'on' : ''}" data-view="fuel">⛽ Fuel</button>
+        <button class="chip ${view === 'records' ? 'on' : ''}" data-view="records">🧾 Records</button>
       </div>
-      ${view === 'fuel' ? fuelHTML(c) : `
+      ${view === 'fuel' ? fuelHTML(c) : view === 'records' ? recordsHTML(c) : `
       <div class="card">
         <div class="water-head"><h2>Maintenance</h2><button class="linkbtn" id="carAddItem" style="margin:0">+ Add item</button></div>
-        <ul class="carlist">
-          ${its.length ? its.map(({ i, info }) => `
+        ${its.length ? GROUPS.map((g) => {
+          const gi = its.filter((x) => groupOf(x.i) === g.id);
+          if (!gi.length) return '';
+          const worst = gi.some((x) => x.info.status === 'overdue') ? 'overdue' : gi.some((x) => x.info.status === 'soon') ? 'soon' : 'ok';
+          return `<details class="grp" ${worst !== 'ok' || !closedGroups.has(g.id) ? 'open' : ''} data-grp="${g.id}">
+            <summary><span>${g.icon} <b>${g.name}</b> <span class="muted small">${gi.length}</span></span><span class="ci-dot ${worst}"></span></summary>
+            <ul class="carlist">${gi.map(({ i, info }) => `
             <li class="caritem ${info.status}" data-item="${i.id}">
               <span class="ci-icon">${i.icon || '🔧'}</span>
               <span class="ci-main"><b>${esc(i.name)}${affectsFuel(i) ? ' <span class="fueltag">⛽</span>' : ''}</b><span class="muted small">${dueText(info)}</span>${wearBar(wear(i, c), info.status)}</span>
               <span class="ci-dot"></span>
-            </li>`).join('') : '<li class="muted">No items yet. Add one, or start with the recommended schedule.</li>'}
-        </ul>
+            </li>`).join('')}</ul></details>`;
+        }).join('') : '<p class="muted">No items yet. Add one, or start with the recommended schedule.</p>'}
         ${its.length ? '<button class="btn ghost full" id="carMissing" style="margin-top:10px">Track more parts (belts, sensors, fluids…)</button>' : '<button class="btn ghost full" id="carStarter" style="margin-top:10px">Add recommended schedule</button>'}
       </div>
-      <div class="card">
-        <h2>Service history</h2>
-        <ul class="timeline">
-          ${d.history.filter((h) => h.carId === c.id).sort((a, b) => b.t - a.t).slice(0, 30).map((h) => `
-            <li><span>${h.icon || '🔧'} ${esc(h.name)}<br><span class="muted small">${fmtKm(h.km)}${h.notes ? ' · ' + esc(h.notes) : ''}</span></span>
-            <span class="muted" style="text-align:right">${fmtDate(h.t)}${h.cost ? '<br>' + peso(h.cost) : ''}</span></li>`).join('') || '<li class="muted">Nothing logged yet.</li>'}
-        </ul>
-      </div>`}
+      `}
       <button class="btn ghost full" id="carAddAnother">+ Add another car</button>`;
 
     el.querySelectorAll('[data-car]').forEach((b) => { b.onclick = async () => { d.selected = b.dataset.car; await api.save(); render(); }; });
     el.querySelectorAll('[data-item]').forEach((li) => { li.onclick = () => itemSheet(li.dataset.item); });
+    el.querySelectorAll('details[data-grp]').forEach((dt) => { dt.ontoggle = () => { if (dt.open) closedGroups.delete(dt.dataset.grp); else closedGroups.add(dt.dataset.grp); }; });
+    $('carRecAdd').onclick = () => recordForm(c, {});
+    el.querySelectorAll('[data-rec]').forEach((r) => { r.onclick = () => recordSheet(r.dataset.rec); });
+    el.querySelectorAll('[data-rgrp]').forEach((b) => { b.onclick = () => { recGroup = b.dataset.rgrp; render(); }; });
+    el.querySelectorAll('[data-thumb]').forEach((im) => { im.onclick = (e) => { e.stopPropagation(); viewReceipt(im.dataset.thumb); }; });
     $('carEdit').onclick = () => carForm(c);
     $('carOdo').onclick = () => odoSheet(c);
     if ($('carAddItem')) $('carAddItem').onclick = () => templateSheet(c);
@@ -522,28 +578,23 @@ window.UpkeepCar = function (api) {
       <p class="muted">${dueText(info)}</p>
       ${whyFor(item) ? `<p class="small">${affectsFuel(item) ? '⛽ ' : ''}${esc(whyFor(item))}</p>` : ''}
       <p class="small">Every ${[item.km ? fmtKm(item.km) : '', item.months ? item.months + ' months' : ''].filter(Boolean).join(' or ')} · last done ${fmtDate(item.lastDate)}${item.lastKm ? ' at ' + fmtKm(item.lastKm) : ''}</p>
-      <div class="form">
-        <div class="row2">
-          <label>Done on<input id="mdDate" type="date" value="${isoDay(Date.now())}" /></label>
-          <label>At km<input id="mdKm" type="number" inputmode="numeric" value="${currentKm(c) || ''}" /></label>
-        </div>
-        <div class="row2">
-          <label>Cost (₱)<input id="mdCost" type="number" inputmode="decimal" placeholder="0" /></label>
-          <label>Notes<input id="mdNotes" placeholder="shop, brand…" /></label>
-        </div>
-      </div>
+      ${checkKind(item) ? (() => {
+        const hx = checksOf(c, item.id).slice(0, 6); const rate = checkKind(item) !== 'tire' ? topUpRate(c, item.id) : null;
+        return `${rate != null ? `<p class="small">Topping up about <b>${rate >= 1000 ? (rate / 1000).toFixed(2) + ' L' : Math.round(rate) + ' ml'}</b> per 1,000 km${checkKind(item) === 'oil' && rate > 500 ? ' — <span class="miss">high, have the engine checked</span>' : ''}</p>` : ''}
+          ${hx.length ? `<ul class="timeline small" style="text-align:left">${hx.map((x) => `<li><span>${fmtDate(x.t)}${x.km ? ' · ' + fmtKm(x.km) : ''}</span><span>${checkLine(x)}</span></li>`).join('')}</ul>` : ''}`;
+      })() : ''}
       <div class="sheet-btns">
-        <button class="btn stand" id="mdDone">Mark done ✓</button>
+        ${checkKind(item) ? '<button class="btn primary" id="mdCheck">Log check ✓ <span class="small">(level / PSI, top-up)</span></button>' : ''}
+        <button class="btn ${checkKind(item) ? 'ghost' : 'stand'}" id="mdDone">Log service ✓ <span class="small">(date, cost, receipt, warranty)</span></button>
         <button class="btn ghost" id="mdEdit">Edit schedule</button>
         <button class="btn ghost" id="mdClose">Close</button>
       </div>
-      ${hist.length ? `<ul class="timeline small" style="text-align:left;margin-top:12px">${hist.map((h) => `<li><span>${fmtDate(h.t)} · ${fmtKm(h.km)}</span><span class="muted">${h.cost ? peso(h.cost) : ''}</span></li>`).join('')}</ul>` : ''}`, () => {
+      ${hist.length ? `<h3 style="text-align:left">History</h3><ul class="carlist" style="text-align:left">${hist.map(recRowHTML).join('')}</ul>` : ''}`, (body) => {
       $('mdClose').onclick = closeSheet;
       $('mdEdit').onclick = () => itemForm(c, item);
-      $('mdDone').onclick = async () => {
-        markDone(item.id, { date: $('mdDate').value, km: $('mdKm').value, cost: $('mdCost').value, notes: $('mdNotes').value.trim() });
-        closeSheet(); await commit();
-      };
+      $('mdDone').onclick = () => recordForm(c, { item });
+      if ($('mdCheck')) $('mdCheck').onclick = () => checkForm(c, item);
+      body.querySelectorAll('[data-rec]').forEach((r) => { r.onclick = () => recordSheet(r.dataset.rec); });
     });
   }
 
@@ -817,9 +868,332 @@ window.UpkeepCar = function (api) {
     });
   }
 
+
+
+  // ================= QUICK CHECKS (oil dipstick, coolant, brake fluid, tire pressure) =================
+  // check: { id, carId, itemId, kind, t, km, level?, added? (ml), psi?: {fl,fr,rl,rr}, target?, aired?, notes }
+  const checksOf = (c, itemId) => (data().checks = data().checks || []).filter((x) => x.carId === c.id && (!itemId || x.itemId === itemId)).sort((a, b) => b.t - a.t);
+  const levelLabel = (kind, lv) => ((LEVELS[kind] || []).find((x) => x[0] === lv) || [0, lv || '—'])[1];
+  function checkLine(x) {
+    if (x.kind === 'tire') {
+      const p = x.psi || {}; const vals = ['fl', 'fr', 'rl', 'rr'].map((k) => p[k]).filter((v) => v);
+      const low = x.target ? vals.filter((v) => v < x.target - 2).length : 0;
+      return `${vals.length ? `FL ${p.fl || '—'} · FR ${p.fr || '—'} · RL ${p.rl || '—'} · RR ${p.rr || '—'} PSI` : 'Checked'}${x.target ? ` (target ${x.target})` : ''}${low ? ` · <span class="miss">${low} low</span>` : ''}${x.aired ? ' · aired up' : ''}`;
+    }
+    return `${LOW.includes(x.level) ? `<span class="miss">${levelLabel(x.kind, x.level)}</span>` : levelLabel(x.kind, x.level)}${x.added ? ` · added ${x.added >= 1000 ? (x.added / 1000).toFixed(2) + ' L' : x.added + ' ml'}` : ''}`;
+  }
+  // how much you top up per 1,000 km (helps spot an engine burning oil or a coolant leak)
+  function topUpRate(c, itemId) {
+    const xs = checksOf(c, itemId).filter((x) => x.km).slice().reverse();
+    if (xs.length < 2) return null;
+    const dist = xs[xs.length - 1].km - xs[0].km; if (dist < 500) return null;
+    const added = xs.slice(1).reduce((a, x) => a + (x.added || 0), 0);
+    return added ? added / dist * 1000 : 0;
+  }
+
+  function checkForm(c, item) {
+    const kind = checkKind(item);
+    const last = checksOf(c, item.id)[0];
+    let level = '', aired = false;
+    const tgt = (last && last.target) || (c.psi || '');
+    sheet(`
+      <div class="sheet-icon">${item.icon || '🔎'}</div><h2>${esc(item.name)}</h2>
+      ${last ? `<p class="muted small">Last: ${fmtDate(last.t)}${last.km ? ' · ' + fmtKm(last.km) : ''} — ${checkLine(last)}</p>` : ''}
+      <div class="form">
+        <div class="row2">
+          <label>Date<input id="ckDate" type="date" value="${isoDay(Date.now())}" /></label>
+          <label>Odometer (km)<input id="ckKm" type="number" inputmode="numeric" value="${currentKm(c) || ''}" /></label>
+        </div>
+        ${kind === 'tire' ? `
+          <label>Recommended PSI (driver-door sticker)<input id="ckTarget" type="number" inputmode="decimal" value="${tgt}" placeholder="e.g. 32" /></label>
+          <div class="tires">${['fl', 'fr', 'rl', 'rr'].map((k) => `<label>${{ fl: 'Front L', fr: 'Front R', rl: 'Rear L', rr: 'Rear R' }[k]}<input data-psi="${k}" type="number" inputmode="decimal" placeholder="PSI" /></label>`).join('')}</div>
+          <label class="check"><input id="ckAired" type="checkbox" /> I added air to the target</label>`
+        : `
+          <label>${kind === 'oil' ? 'Dipstick reading' : 'Tank level'}</label>
+          <div class="chips tight" id="ckLevels">${(LEVELS[kind] || [['low', 'Low'], ['ok', 'OK']]).map(([v, l]) => `<button class="chip" data-lv="${v}">${l}</button>`).join('')}</div>
+          <label>Topped up (ml)<input id="ckAdded" type="number" inputmode="numeric" placeholder="0 if none" /></label>
+          <div class="chips tight">${[100, 250, 500, 1000].map((n) => `<button class="chip" data-add="${n}">+${n >= 1000 ? '1 L' : n + ' ml'}</button>`).join('')}</div>`}
+        <label>Notes<input id="ckNotes" placeholder="optional" /></label>
+      </div>
+      <div class="sheet-btns"><button class="btn primary" id="ckSave">Save check</button><button class="btn ghost" id="ckCancel">Cancel</button></div>`, (body) => {
+      $('ckCancel').onclick = closeSheet;
+      body.querySelectorAll('[data-lv]').forEach((b) => { b.onclick = () => { level = b.dataset.lv; body.querySelectorAll('[data-lv]').forEach((x) => x.classList.toggle('on', x === b)); }; });
+      body.querySelectorAll('[data-add]').forEach((b) => { b.onclick = () => { $('ckAdded').value = (Number($('ckAdded').value) || 0) + Number(b.dataset.add); }; });
+      $('ckSave').onclick = async () => {
+        const t = $('ckDate').value === isoDay(Date.now()) ? Date.now() : new Date($('ckDate').value + 'T12:00:00').getTime();
+        const km = Math.round(Number($('ckKm').value)) || 0;
+        const rec = { id: uid(), carId: c.id, itemId: item.id, kind, t, km, notes: $('ckNotes').value.trim() };
+        if (kind === 'tire') {
+          rec.psi = {}; body.querySelectorAll('[data-psi]').forEach((x) => { if (x.value) rec.psi[x.dataset.psi] = Number(x.value); });
+          rec.target = Number($('ckTarget').value) || 0; rec.aired = $('ckAired').checked;
+          if (rec.target) c.psi = rec.target;
+        } else {
+          if (!level) { toast('Pick the level you see'); return; }
+          rec.level = level; rec.added = Number($('ckAdded').value) || 0;
+        }
+        const before = statusMap(c), prevKm = currentKm(c);
+        if (km > currentKm(c)) addOdo(c, km, Math.min(t, Date.now()));
+        (data().checks = data().checks || []).push(rec);
+        item.lastDate = t; item.lastKm = km || currentKm(c);
+        closeSheet();
+        const low = kind === 'tire' ? (rec.target && Object.values(rec.psi).some((v) => v < rec.target - 2) && !rec.aired) : (LOW.includes(level) && !rec.added);
+        await commitWithOdoCheck(c, before, prevKm, low ? `⚠ ${item.name}: low — top up soon` : `${item.name} logged ✓`);
+      };
+    });
+  }
+
+  function checksHTML(c) {
+    const xs = checksOf(c).slice(0, 15);
+    if (!xs.length) return '';
+    const its = data().items;
+    return `<div class="card"><h2>🔎 Recent checks</h2><ul class="carlist">${xs.map((x) => {
+      const it = its.find((i) => i.id === x.itemId) || {};
+      return `<li class="caritem" data-item="${x.itemId}"><span class="ci-icon">${it.icon || '🔎'}</span><span class="ci-main"><b>${esc(it.name || x.kind)}</b><span class="muted small">${fmtDate(x.t)}${x.km ? ' · ' + fmtKm(x.km) : ''}</span><span class="small">${checkLine(x)}</span></span></li>`;
+    }).join('')}</ul></div>`;
+  }
+
+  // ================= RECORDS: repairs, replacements, receipts, warranty =================
+  // record: { id, carId, itemId?, group, name, icon, t, km, parts:[{name,cost}], labor, cost(total), shop, notes,
+  //           receipts:[{id, type:'image'|'pdf', thumb}], warranty:{months, km} | null }
+  const native = api.native || null;
+  const recsOf = (c) => data().history.filter((h) => h.carId === c.id);
+
+  function warrantyInfo(r, c) {
+    const w = r.warranty;
+    if (!w || (!w.months && !w.km)) return null;
+    const until = w.months ? addMonths(r.t, w.months) : null;
+    const kmUntil = w.km ? (r.km || 0) + w.km : null;
+    const now = Date.now(), km = currentKm(c);
+    const expired = (until != null && now > until) || (kmUntil != null && km > kmUntil);
+    const daysLeft = until != null ? Math.ceil((until - now) / DAY) : null;
+    const kmLeft = kmUntil != null ? kmUntil - km : null;
+    const soon = !expired && ((daysLeft != null && daysLeft <= 30) || (kmLeft != null && kmLeft <= 1000));
+    const parts = [];
+    if (until != null) parts.push(expired && now > until ? `ended ${fmtDate(until)}` : `until ${fmtDate(until)}`);
+    if (kmUntil != null) parts.push(expired && km > kmUntil ? `ended at ${fmtKm(kmUntil)}` : `${fmtKm(Math.max(0, kmLeft))} left`);
+    return { until, kmUntil, expired, soon, daysLeft, kmLeft, text: parts.join(' · ') };
+  }
+  const warrantyChip = (wi) => !wi ? '' : wi.expired ? '<span class="chip-s bad">Warranty ended</span>'
+    : wi.soon ? `<span class="chip-s warn">Warranty ${wi.daysLeft != null ? wi.daysLeft + 'd' : fmtKm(wi.kmLeft)} left</span>` : '<span class="chip-s ok">Under warranty</span>';
+
+  function recRowHTML(r) {
+    const c = data().cars.find((x) => x.id === r.carId) || car();
+    const wi = warrantyInfo(r, c);
+    const n = (r.receipts || []).length;
+    return `<li class="caritem" data-rec="${r.id}">
+      <span class="ci-icon">${r.icon || G(groupOf(r)).icon}</span>
+      <span class="ci-main"><b>${esc(r.name)}</b>
+        <span class="muted small">${fmtDate(r.t)}${r.km ? ' · ' + fmtKm(r.km) : ''}${r.shop ? ' · ' + esc(r.shop) : ''}</span>
+        <span>${warrantyChip(wi)}${n ? ` <span class="chip-s">📎 ${n}</span>` : ''}</span></span>
+      <span class="rec-cost">${r.cost ? peso(r.cost) : ''}</span></li>`;
+  }
+
+  function recordsHTML(c) {
+    const recs = recsOf(c).slice().sort((a, b) => b.t - a.t);
+    const withW = recs.map((r) => ({ r, wi: warrantyInfo(r, c) })).filter((x) => x.wi);
+    const active = withW.filter((x) => !x.wi.expired).sort((a, b) => (a.wi.until || 9e15) - (b.wi.until || 9e15));
+    const yr = new Date().getFullYear();
+    const byGroup = {};
+    recs.filter((r) => new Date(r.t).getFullYear() === yr).forEach((r) => { const g = groupOf(r); byGroup[g] = (byGroup[g] || 0) + (r.cost || 0); });
+    const present = GROUPS.filter((g) => recs.some((r) => groupOf(r) === g.id));
+    const shown = recGroup === 'all' ? recs : recs.filter((r) => groupOf(r) === recGroup);
+    const total = shown.reduce((a, r) => a + (r.cost || 0), 0);
+    return `
+      <div class="card">
+        <div class="water-head"><h2>🛡 Warranties</h2><span class="muted small">${active.length} active · ${withW.length - active.length} ended</span></div>
+        ${active.length ? `<ul class="carlist">${active.map(({ r, wi }) => `<li class="caritem ${wi.soon ? 'soon' : ''}" data-rec="${r.id}">
+          <span class="ci-icon">${r.icon || G(groupOf(r)).icon}</span><span class="ci-main"><b>${esc(r.name)}</b><span class="muted small">${wi.text}</span></span>${warrantyChip(wi)}</li>`).join('')}</ul>`
+          : '<p class="muted small">No active warranties. Add one when you log a repair or replacement.</p>'}
+      </div>
+      ${Object.keys(byGroup).length ? `<div class="card"><h2>Repairs by system · ${yr}</h2><ul class="timeline">${GROUPS.filter((g) => byGroup[g.id] != null).map((g) => `<li><span>${g.icon} ${g.name}</span><span>${peso(byGroup[g.id])}</span></li>`).join('')}</ul></div>` : ''}
+      ${checksHTML(c)}
+      <div class="card">
+        <div class="water-head"><h2>Repair & replacement records</h2><span class="muted small">${peso(total)}</span></div>
+        <div class="chips"><button class="chip ${recGroup === 'all' ? 'on' : ''}" data-rgrp="all">All (${recs.length})</button>${present.map((g) => `<button class="chip ${recGroup === g.id ? 'on' : ''}" data-rgrp="${g.id}">${g.icon} ${g.name}</button>`).join('')}</div>
+        <ul class="carlist">${shown.map(recRowHTML).join('') || '<li class="muted small">No records yet. Tap “Log repair / replacement” to add one — with parts, cost, receipt and warranty.</li>'}</ul>
+      </div>`;
+  }
+
+  // ---------- receipts ----------
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+  const readAsDataURL = (file) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
+  function scaleTo(im, max, q) {
+    const k = Math.min(1, max / Math.max(im.width, im.height));
+    const cv = document.createElement('canvas'); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+    cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/jpeg', q);
+  }
+  async function storeReceipt(id, dataUrl) {
+    if (native) return native.receiptSave({ id, data: dataUrl });
+    const m = JSON.parse(localStorage.getItem('upkeep_receipts') || '{}'); m[id] = dataUrl;
+    localStorage.setItem('upkeep_receipts', JSON.stringify(m));
+  }
+  async function readReceipt(id) {
+    if (native) return (await native.receiptRead({ id })).data;
+    return JSON.parse(localStorage.getItem('upkeep_receipts') || '{}')[id];
+  }
+  async function deleteReceipt(id) {
+    if (native) return native.receiptDelete({ id });
+    const m = JSON.parse(localStorage.getItem('upkeep_receipts') || '{}'); delete m[id];
+    localStorage.setItem('upkeep_receipts', JSON.stringify(m));
+  }
+  // Photo → compressed JPEG (~1600px) + small thumbnail; PDF kept as is
+  async function addReceiptFiles(files) {
+    const out = [];
+    for (const f of files) {
+      try {
+        const src = await readAsDataURL(f);
+        if (/pdf/i.test(f.type) || /\.pdf$/i.test(f.name)) {
+          const id = 'r_' + uid() + '.pdf'; await storeReceipt(id, src); out.push({ id, type: 'pdf', thumb: '', name: f.name });
+        } else {
+          const im = await loadImg(src);
+          const id = 'r_' + uid() + '.jpg';
+          await storeReceipt(id, scaleTo(im, 1600, 0.82));
+          out.push({ id, type: 'image', thumb: scaleTo(im, 160, 0.6) });
+        }
+      } catch (e) { toast('Could not add ' + (f.name || 'file')); }
+    }
+    return out;
+  }
+  async function viewReceipt(id) {
+    if (/\.pdf$/.test(id) && native) { try { await native.receiptOpen({ id }); } catch (e) { toast('No app to open PDFs'); } return; }
+    let src; try { src = await readReceipt(id); } catch (_) { }
+    if (!src) { toast('Receipt file not found'); return; }
+    const ov = document.createElement('div'); ov.className = 'viewer';
+    ov.innerHTML = /\.pdf$/.test(id) ? `<a class="btn primary" href="${src}" download="${id}">Open PDF</a>` : `<img src="${src}" alt="Receipt" />`;
+    ov.onclick = () => ov.remove();
+    document.body.appendChild(ov);
+  }
+  const thumbsHTML = (list, removable) => (list || []).map((r) => `<span class="thumb" data-thumb="${r.id}">${r.type === 'pdf' ? '<span class="pdf">PDF</span>' : `<img src="${r.thumb}" alt="" />`}${removable ? `<button class="x" data-rm="${r.id}">×</button>` : ''}</span>`).join('');
+
+  // ---------- add / edit a record ----------
+  const W_PRESETS = [[0, 'None'], [3, '3 mo'], [6, '6 mo'], [12, '1 yr'], [24, '2 yrs'], [36, '3 yrs']];
+  function recordForm(c, { item, rec }) {
+    const its = itemsOf(c);
+    const r = rec ? JSON.parse(JSON.stringify(rec)) : {
+      group: item ? groupOf(item) : 'other', name: item ? item.name : '', itemId: item ? item.id : '', t: Date.now(), km: currentKm(c) || '',
+      parts: [{ name: '', cost: '' }], labor: '', shop: '', notes: '', receipts: [], warranty: null,
+    };
+    if (!r.parts || !r.parts.length) r.parts = [{ name: rec && !rec.parts ? rec.name : '', cost: rec && !rec.parts ? rec.cost || '' : '' }];
+    let wMonths = r.warranty ? r.warranty.months || 0 : 0;
+    const draw = () => sheet(`
+      <div class="sheet-icon">🧾</div><h2>${rec ? 'Edit record' : 'Log repair / replacement'}</h2>
+      <div class="form">
+        <label>System<select id="rfGroup">${GROUPS.map((g) => `<option value="${g.id}" ${r.group === g.id ? 'selected' : ''}>${g.icon} ${g.name}</option>`).join('')}</select></label>
+        <label>What was done<input id="rfName" value="${esc(r.name)}" placeholder="e.g. Replaced AC compressor" /></label>
+        <div class="row2">
+          <label>Date<input id="rfDate" type="date" value="${isoDay(r.t)}" /></label>
+          <label>Odometer (km)<input id="rfKm" type="number" inputmode="numeric" value="${r.km || ''}" /></label>
+        </div>
+        <label>Parts &amp; costs</label>
+        <div id="rfParts">${r.parts.map((p, k) => `<div class="row2 partrow">
+          <input data-pn="${k}" value="${esc(p.name)}" placeholder="Part, e.g. Compressor" />
+          <input data-pc="${k}" type="number" inputmode="decimal" value="${p.cost}" placeholder="₱" style="max-width:110px" />
+          ${r.parts.length > 1 ? `<button class="x2" data-prm="${k}">×</button>` : ''}</div>`).join('')}</div>
+        <button class="linkbtn left" id="rfAddPart">+ Add part</button>
+        <div class="row2">
+          <label>Labor (₱)<input id="rfLabor" type="number" inputmode="decimal" value="${r.labor || ''}" /></label>
+          <label>Total<input id="rfTotal" readonly value="" /></label>
+        </div>
+        <label>Shop / mechanic<input id="rfShop" value="${esc(r.shop || '')}" placeholder="optional" /></label>
+        <label>Warranty</label>
+        <div class="chips tight">${W_PRESETS.map(([m, l]) => `<button class="chip ${wMonths === m ? 'on' : ''}" data-wm="${m}">${l}</button>`).join('')}</div>
+        <div class="row2">
+          <label>Months<input id="rfWm" type="number" inputmode="numeric" value="${wMonths || ''}" placeholder="—" /></label>
+          <label>and/or km<input id="rfWk" type="number" inputmode="numeric" value="${r.warranty && r.warranty.km ? r.warranty.km : ''}" placeholder="—" /></label>
+        </div>
+        <label>Receipts</label>
+        <div class="thumbs" id="rfThumbs">${thumbsHTML(r.receipts, true)}
+          <label class="thumb add">📷<input type="file" id="rfFile" accept="image/*,application/pdf" multiple hidden /></label></div>
+        ${its.length ? `<label>Also resets this schedule<select id="rfItem"><option value="">— none —</option>${its.map((i) => `<option value="${i.id}" ${r.itemId === i.id ? 'selected' : ''}>${i.icon || '🔧'} ${esc(i.name)}</option>`).join('')}</select></label>` : ''}
+        <label>Notes<input id="rfNotes" value="${esc(r.notes || '')}" placeholder="brand, part number…" /></label>
+      </div>
+      <div class="sheet-btns">
+        <button class="btn primary" id="rfSave">Save record</button>
+        ${rec ? '<button class="btn danger" id="rfDel">Delete record</button>' : ''}
+        <button class="btn ghost" id="rfCancel">Cancel</button>
+      </div>`, (body) => {
+      const grab = () => {
+        r.group = $('rfGroup').value; r.name = $('rfName').value; r.km = $('rfKm').value; r.labor = $('rfLabor').value;
+        r.t = $('rfDate').value ? new Date($('rfDate').value + 'T12:00:00').getTime() : Date.now();
+        r.shop = $('rfShop').value; r.notes = $('rfNotes').value; if ($('rfItem')) r.itemId = $('rfItem').value;
+        body.querySelectorAll('[data-pn]').forEach((x) => { r.parts[+x.dataset.pn].name = x.value; });
+        body.querySelectorAll('[data-pc]').forEach((x) => { r.parts[+x.dataset.pc].cost = x.value; });
+        wMonths = Number($('rfWm').value) || 0;
+        r.warranty = wMonths || Number($('rfWk').value) ? { months: wMonths, km: Number($('rfWk').value) || 0 } : null;
+      };
+      const total = () => { grab(); const t = r.parts.reduce((a, p) => a + (Number(p.cost) || 0), 0) + (Number(r.labor) || 0); $('rfTotal').value = t ? peso(t) : ''; return t; };
+      total();
+      body.querySelectorAll('[data-pc], #rfLabor').forEach((x) => { x.oninput = total; });
+      $('rfAddPart').onclick = () => { grab(); r.parts.push({ name: '', cost: '' }); draw(); };
+      body.querySelectorAll('[data-prm]').forEach((b) => { b.onclick = () => { grab(); r.parts.splice(+b.dataset.prm, 1); draw(); }; });
+      body.querySelectorAll('[data-wm]').forEach((b) => { b.onclick = () => { grab(); wMonths = +b.dataset.wm; $('rfWm').value = wMonths || ''; r.warranty = wMonths || Number($('rfWk').value) ? { months: wMonths, km: Number($('rfWk').value) || 0 } : null; draw(); }; });
+      $('rfItem') && ($('rfItem').onchange = () => { const it = its.find((i) => i.id === $('rfItem').value); if (it) { grab(); if (!r.name) r.name = it.name; r.group = groupOf(it); draw(); } });
+      $('rfFile').onchange = async (e) => { grab(); const add = await addReceiptFiles([...e.target.files]); r.receipts = (r.receipts || []).concat(add); draw(); };
+      body.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); grab(); r.receipts = r.receipts.filter((x) => x.id !== b.dataset.rm); draw(); }; });
+      body.querySelectorAll('[data-thumb]').forEach((im) => { im.onclick = () => viewReceipt(im.dataset.thumb); });
+      $('rfCancel').onclick = () => { if (!rec) (r.receipts || []).forEach((x) => deleteReceipt(x.id)); closeSheet(); };
+      $('rfSave').onclick = async () => {
+        const t = total();
+        if (!r.name.trim() && !r.parts.some((p) => p.name.trim())) { toast('Say what was done'); return; }
+        const km = r.km === '' ? 0 : Math.round(Number(r.km));
+        const it = its.find((i) => i.id === r.itemId);
+        const out = {
+          carId: c.id, itemId: r.itemId || null, group: r.group, name: r.name.trim() || r.parts.find((p) => p.name.trim()).name.trim(),
+          icon: it ? it.icon : G(r.group).icon, t: r.t, km, parts: r.parts.filter((p) => p.name.trim() || Number(p.cost)).map((p) => ({ name: p.name.trim(), cost: Number(p.cost) || 0 })),
+          labor: Number(r.labor) || 0, cost: t, shop: r.shop.trim(), notes: r.notes.trim(), receipts: r.receipts || [], warranty: r.warranty,
+        };
+        const before = statusMap(c), prevKm = currentKm(c);
+        if (km > currentKm(c)) addOdo(c, km, isoDay(r.t) === isoDay(Date.now()) ? Date.now() : Math.min(r.t, Date.now()));
+        if (it && (!it.lastDate || r.t >= it.lastDate - DAY)) { it.lastDate = r.t; it.lastKm = km || currentKm(c); }
+        if (rec) {
+          (rec.receipts || []).filter((x) => !out.receipts.some((y) => y.id === x.id)).forEach((x) => deleteReceipt(x.id));
+          Object.assign(rec, out);
+        } else data().history.push({ id: uid(), ...out });
+        closeSheet(); view = 'records';
+        await commitWithOdoCheck(c, before, prevKm, `${out.name} saved${out.warranty ? ' · warranty tracked' : ''}`);
+      };
+      if ($('rfDel')) $('rfDel').onclick = async () => {
+        if (!confirm('Delete this record and its receipts?')) return;
+        (rec.receipts || []).forEach((x) => deleteReceipt(x.id));
+        data().history = data().history.filter((h) => h.id !== rec.id);
+        closeSheet(); await commit('Record deleted');
+      };
+    });
+    draw();
+  }
+
+  function recordSheet(recId) {
+    const r = data().history.find((h) => h.id === recId); if (!r) return;
+    const c = data().cars.find((x) => x.id === r.carId) || car();
+    const wi = warrantyInfo(r, c);
+    sheet(`
+      <div class="sheet-icon">${r.icon || G(groupOf(r)).icon}</div><h2>${esc(r.name)}</h2>
+      <p class="muted">${G(groupOf(r)).name} · ${fmtDate(r.t)}${r.km ? ' · ' + fmtKm(r.km) : ''}${r.shop ? ' · ' + esc(r.shop) : ''}</p>
+      ${wi ? `<p>${warrantyChip(wi)} <span class="small">${wi.text}</span></p>` : '<p class="muted small">No warranty recorded</p>'}
+      ${(r.parts || []).length ? `<ul class="timeline" style="text-align:left">${r.parts.map((p) => `<li><span>${esc(p.name || '—')}</span><span>${p.cost ? peso(p.cost) : ''}</span></li>`).join('')}
+        ${r.labor ? `<li><span>Labor</span><span>${peso(r.labor)}</span></li>` : ''}<li><b>Total</b><b>${peso(r.cost)}</b></li></ul>` : `<p><b>${peso(r.cost)}</b></p>`}
+      ${(r.receipts || []).length ? `<div class="thumbs" style="justify-content:center">${thumbsHTML(r.receipts)}</div>` : ''}
+      ${r.notes ? `<p class="small">${esc(r.notes)}</p>` : ''}
+      <div class="sheet-btns"><button class="btn ghost" id="rsEdit">Edit</button><button class="btn ghost" id="rsClose">Close</button></div>`, (body) => {
+      $('rsClose').onclick = closeSheet;
+      $('rsEdit').onclick = () => recordForm(c, { rec: r });
+      body.querySelectorAll('[data-thumb]').forEach((im) => { im.onclick = () => viewReceipt(im.dataset.thumb); });
+    });
+  }
+
+  // receipts travel with backups
+  async function exportReceipts() {
+    const out = {};
+    for (const h of data().history) for (const x of h.receipts || []) { try { out[x.id] = await readReceipt(x.id); } catch (_) { } }
+    return out;
+  }
+  async function importReceipts(map) { for (const id of Object.keys(map || {})) { try { await storeReceipt(id, map[id]); } catch (_) { } } }
+
   // Notification action entry point (from app.js)
   function handleAction(actionId, extra) {
     api.showTab('car');
+    if (extra.kind === 'carwarranty') { recordSheet(extra.recId); return; }
     if (extra.kind === 'carodo') { const c = data().cars.find((x) => x.id === extra.carId); if (c) odoSheet(c); return; }
     if (extra.kind === 'car') {
       if (actionId === 'snooze') return 'snooze';
@@ -836,5 +1210,5 @@ window.UpkeepCar = function (api) {
 
   const openOdo = () => { const c = car(); if (c) odoSheet(c); };
   const openFuel = () => { const c = car(); if (c) { view = 'fuel'; render(); fuelForm(c); } };
-  return { render, buildNotifications, handleAction, summary, data, openOdo, openFuel, isSheetOpen: () => !!sheetOpen };
+  return { render, buildNotifications, handleAction, summary, data, openOdo, openFuel, exportReceipts, importReceipts, isSheetOpen: () => !!sheetOpen };
 };

@@ -1085,7 +1085,9 @@
 
   async function saveRestorePoint(reason, toDownloads) {
     const name = `upkeep-backup-${stamp()}-${reason}.json`;
-    const data = JSON.stringify({ app: 'fitdad', v: 2, at: new Date().toISOString(), reason, settings, days, car: extraData.car });
+    let receipts = {};
+    try { if (Car && extraData.car) receipts = await Car.exportReceipts(); } catch (_) { }
+    const data = JSON.stringify({ app: 'fitdad', v: 2, at: new Date().toISOString(), reason, settings, days, car: extraData.car, receipts });
     if (isNative) {
       const r = await Widget.backupSave({ name, data, downloads: !!toDownloads });
       if (toDownloads && !r.downloads) throw new Error(r.downloadsError || 'could not write to Downloads');
@@ -1149,7 +1151,7 @@
     return {
       water: wDays.length ? { has: true, text: `${wDays.length} day${wDays.length > 1 ? 's' : ''} · ${totalL.toFixed(1)} L total · ${range(wDays)}` } : { has: false, text: 'No water data' },
       stand: sDays.length ? { has: true, text: `${sDays.length} day${sDays.length > 1 ? 's' : ''} · ${totalS} stand-ups · ${fmtDur(workMs)} worked · ${range(sDays)}` } : { has: false, text: 'No stand-up data' },
-      car: cars.length ? { has: true, text: `${cars.map((c) => c.name).join(', ')} · ${parts} parts · ${fills} fill-ups · ${services} services` } : { has: false, text: 'No car data' },
+      car: cars.length ? { has: true, text: `${cars.map((c) => c.name).join(', ')} · ${parts} parts · ${fills} fill-ups · ${services} records · ${(car.checks || []).length} checks · ${Object.keys(b.receipts || {}).length} receipts` } : { has: false, text: 'No car data' },
       rows: keys.filter((k) => (ds[k].water || 0) > 0 || (ds[k].stands || 0) > 0).reverse().slice(0, 30)
         .map((k) => ({ k, water: (ds[k].water || 0) / 1000, stands: ds[k].stands || 0 })),
     };
@@ -1253,7 +1255,7 @@
             copyFeatureDay(rec(k), bd[k], f);
           });
         });
-        if (sel.includes('car')) extraData.car = b.car || null;
+        if (sel.includes('car')) { extraData.car = b.car || null; if (Car && b.receipts) await Car.importReceipts(b.receipts); }
         if (sel.includes('settings')) settings = { ...DEFAULTS, ...(b.settings || {}) };
         closeSheet(); await save(); render(); renderSettings(); await reschedule();
         if (Car && $('view-car').classList.contains('active')) Car.render();
@@ -1266,7 +1268,7 @@
   async function boot() {
     wire();
     if (window.UpkeepCar) {
-      Car = window.UpkeepCar({ $, toast, fmtTime, pad, root: () => extraData, save, reschedule, showTab });
+      Car = window.UpkeepCar({ $, toast, fmtTime, pad, root: () => extraData, save, reschedule, showTab, native: isNative ? Widget : null });
     }
     await load();
     autoEndIfNeeded();

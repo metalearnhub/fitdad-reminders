@@ -272,3 +272,27 @@ body.one-half .today .ring-sub { font-size: 13px; }
 body.one-half .today .half-stats { align-items: center; gap: 7px; }
 body.one-half .today .stat-main { font-size: 18px; }
 body.one-half .today .linkbtn.left { text-align: center; }
+
+/* ===== Car records ===== */
+details.grp { border-top: 1px solid var(--line); }
+details.grp:first-of-type { border-top: 0; }
+details.grp > summary { list-style: none; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; cursor: pointer; }
+details.grp > summary::-webkit-details-marker { display: none; }
+details.grp > summary .ci-dot.soon { background: var(--amber); } details.grp > summary .ci-dot.overdue { background: var(--danger); }
+details.grp .carlist { margin: 0 0 6px 6px; }
+.rec-cost { font-weight: 700; white-space: nowrap; }
+.chip-s { background: var(--line); color: var(--muted); }
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.thumb { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
+.thumb .pdf { font-weight: 800; font-size: 12px; color: var(--danger); }
+.thumb.add { font-size: 22px; color: var(--muted); border-style: dashed; }
+.thumb .x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: rgba(0,0,0,.7); color: #fff; font-size: 13px; line-height: 20px; padding: 0; }
+.x2 { flex: none; width: 36px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 10px; }
+.partrow { margin-bottom: 6px; }
+.partrow input { flex: 1; }
+.form select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 11px; font-size: 15px; width: 100%; }
+.viewer { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.92); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.viewer img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+.tires { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form label.thumb.add { flex: none; width: 64px; height: 64px; flex-direction: row; align-items: center; justify-content: center; font-size: 22px; }

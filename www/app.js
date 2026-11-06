@@ -178,6 +178,8 @@
 
       // Every notification tap/button is queued natively (MainActivity), so it survives a cold start
       LN.addListener('localNotificationActionPerformed', () => serial(drainActions));
+      // A notification button or the widget saved something while the app is open → reload now
+      Widget.addListener('dataChanged', () => serial(async () => { await load(); render(); await reschedule(); }));
 
       if (AppPlugin) {
         AppPlugin.addListener('resume', () => serial(async () => { await load(); autoEndIfNeeded(); render(); await reschedule(); await drainActions(); }));
@@ -681,7 +683,7 @@
       <p class="small">Reminders answered: <b>${t.answered}/${t.reminders}</b>${t.missed ? ` · <span class="miss">${t.missed} missed</span>` : ''}</p>
       ${workSessionsHTML()}
       <p class="muted small">${t.fromNotif + tw.log.filter((e) => e.k === 'water' && e.src === 'notif' && tw.key !== t.key).length} confirmed from notifications · ${t.snoozes + (tw.key !== t.key ? tw.snoozes : 0)} snoozed · ${t.skips + (tw.key !== t.key ? tw.skips : 0)} skipped</p>`;
-    const names = { endwork: '✅ Done working', water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
+    const names = { dayoff: '🏖 Day off', endwork: '✅ Done working', water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
     const evs = (tw.key === t.key ? t.log : tw.log.concat(t.log)).slice().sort((a, b) => b.t - a.t).slice(0, 30);
     $('statTimeline').innerHTML = evs.length
       ? evs.map((e) => `<li><span>${names[e.k] || e.k}</span><span class="muted">${fmtTime(new Date(e.t))}${e.src === 'notif' ? ' · 🔔' : ''}</span></li>`).join('')
@@ -1022,6 +1024,23 @@
     ['s-waterGoal', 's-glass', 's-waterEvery'].forEach((id) => { $(id).oninput = renderWaterPlanner; });
   }
 
+  // ---------- "x min ago" since your last tap (live) ----------
+  const agoText = (t) => {
+    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${pad(s % 60)}s ago`;
+    return `${Math.floor(m / 60)}h ${pad(m % 60)}m ago`;
+  };
+  const SRC = { notif: 'notification', widget: 'widget', app: 'app' };
+  function tickAgo() {
+    const r = today();
+    const last = (k) => (r.log || []).filter((e) => e.k === k).sort((a, b) => b.t - a.t)[0];
+    const st = last('stand'), wa = last('water');
+    if ($('standAgo')) $('standAgo').textContent = st ? `Last stood up ${agoText(st.t)} · ${fmtTime(new Date(st.t))} via ${SRC[st.src] || st.src}` : 'No stand-up logged yet today';
+    if ($('waterAgo')) $('waterAgo').textContent = wa ? `Last glass ${agoText(wa.t)} · ${fmtTime(new Date(wa.t))} via ${SRC[wa.src] || wa.src}` : 'No glass logged yet today';
+  }
+
   // ---------- Boot ----------
   async function boot() {
     wire();
@@ -1035,6 +1054,7 @@
     await save();
     await reschedule();
     await serial(drainActions);
+    tickAgo(); setInterval(tickAgo, 1000);
     // refresh UI every minute (day rollover, next-reminder label)
     setInterval(() => { autoEndIfNeeded(); render(); updateNextLabel(buildNotifications()); }, 60000);
   }

@@ -184,3 +184,5 @@ table.lb tbody tr { cursor: pointer; }
 .calc-chips { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
 .calc-result { margin-top: 12px; font-size: 16px; min-height: 22px; }
 #s-waterPreview { white-space: pre-line; }
+.ago { font-size: 13px; font-weight: 700; text-align: center; margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+#standAgo { text-align: left; }

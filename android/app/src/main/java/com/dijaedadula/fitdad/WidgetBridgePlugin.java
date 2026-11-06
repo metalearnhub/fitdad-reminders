@@ -22,6 +22,16 @@ import java.nio.charset.StandardCharsets;
 @CapacitorPlugin(name = "WidgetBridge")
 public class WidgetBridgePlugin extends Plugin {
 
+    private static WidgetBridgePlugin instance;
+
+    @Override
+    public void load() { instance = this; }
+
+    /** Tell the app (if it's running) that data changed outside it — notification button or widget. */
+    static void emitChanged() {
+        try { if (instance != null) instance.notifyListeners("dataChanged", new JSObject(), true); } catch (Exception ignored) { }
+    }
+
     @PluginMethod
     public void refresh(PluginCall call) {
         FitDadWidget.updateAll(getContext());

@@ -46,10 +46,12 @@ public class FitDadWidget extends AppWidgetProvider {
             log(ctx, ACTION_WATER.equals(a), "widget");
             ReminderGate.clearDelivered(ctx, ACTION_WATER.equals(a) ? "water" : "stand");
             updateAll(ctx);
+            WidgetBridgePlugin.emitChanged();
         } else if (ACTION_ENDWORK.equals(a)) {
             endWork(ctx, "widget");
             ReminderGate.clearDelivered(ctx, "stand");
             updateAll(ctx);
+            WidgetBridgePlugin.emitChanged();
         }
     }
 
@@ -75,6 +77,29 @@ public class FitDadWidget extends AppWidgetProvider {
         } catch (Exception e) {
             return new JSONObject();
         }
+    }
+
+    static void save(Context ctx, JSONObject root) throws Exception {
+        root.put("widgetDirty", true);
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, root.toString()).apply();
+    }
+
+    static long lastOf(JSONObject r, String k) {
+        JSONArray log = r.optJSONArray("log");
+        long t = 0;
+        if (log != null) for (int i = 0; i < log.length(); i++) {
+            JSONObject e = log.optJSONObject(i);
+            if (e != null && k.equals(e.optString("k"))) t = Math.max(t, e.optLong("t"));
+        }
+        return t;
+    }
+
+    /** Live-counting "time since" on the widget (mm:ss, then h:mm:ss). */
+    static void agoTimer(RemoteViews v, int viewId, long t, String label) {
+        if (t <= 0) { v.setViewVisibility(viewId, android.view.View.GONE); return; }
+        v.setViewVisibility(viewId, android.view.View.VISIBLE);
+        long base = android.os.SystemClock.elapsedRealtime() - (System.currentTimeMillis() - t);
+        v.setChronometer(viewId, base, label + " %s ago", true);
     }
 
     static JSONObject today(JSONObject root) throws Exception {
@@ -233,6 +258,10 @@ public class FitDadWidget extends AppWidgetProvider {
             v.setTextViewText(R.id.w_stands, String.valueOf(stands));
             v.setTextViewText(R.id.w_btn_water, "+ " + glass + " ml");
 
+            long lastStand = lastOf(r, "stand"), lastWater = lastOf(r, "water");
+            agoTimer(v, R.id.w_ago_stand, lastStand, "🧍");
+            agoTimer(v, R.id.w_ago_water, lastWater, "💧");
+            v.setViewVisibility(R.id.w_ago_none, lastStand == 0 && lastWater == 0 ? android.view.View.VISIBLE : android.view.View.GONE);
             String week = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_WEEK, null);
             v.setTextViewText(R.id.w_week, week != null ? week : "Week stats appear after you use the app");
 

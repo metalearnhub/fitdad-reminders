@@ -42,9 +42,16 @@ public class ReminderGate extends BroadcastReceiver {
             next.put(String.valueOf(it.getInt("id")), it);
         }
         JSONArray oldIds = old.names();
+        long now = System.currentTimeMillis();
         if (oldIds != null) for (int i = 0; i < oldIds.length(); i++) {
             String id = oldIds.getString(i);
-            if (!next.has(id)) cancelAlarm(ctx, Integer.parseInt(id));
+            if (next.has(id)) continue;
+            int n = Integer.parseInt(id);
+            JSONObject o = old.optJSONObject(id);
+            // keep one-off reminders (snooze 5000–5999, test 9000–9999, car snooze 21000–21999) that are still ahead
+            boolean oneOff = (n >= 5000 && n < 6000) || (n >= 9000 && n < 10000) || (n >= 21000 && n < 22000);
+            if (oneOff && o != null && o.optLong("at") > now) { next.put(id, o); continue; }
+            cancelAlarm(ctx, n);
         }
         saveItems(ctx, next);
         armAll(ctx, next);
@@ -190,6 +197,15 @@ public class ReminderGate extends BroadcastReceiver {
 
     // ---------- showing ----------
 
+    private static PendingIntent inPlaceAction(Context ctx, JSONObject it, String actionId, int req) {
+        Intent i = new Intent(ctx, NotifActionReceiver.class)
+                .setAction(NotifActionReceiver.ACTION + "." + it.optInt("id") + "." + actionId)
+                .putExtra("id", it.optInt("id"))
+                .putExtra("action", actionId)
+                .putExtra("kind", it.optString("kind"));
+        return PendingIntent.getBroadcast(ctx, req, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
     private static PendingIntent openWith(Context ctx, JSONObject it, String actionId, int req) {
         Intent i = new Intent(ctx, MainActivity.class);
         i.setAction("upkeep." + it.optInt("id") + "." + actionId);
@@ -250,7 +266,12 @@ public class ReminderGate extends BroadcastReceiver {
             case "CARODO": actions = new String[][] { { "update", "Update km" } }; break;
             default: actions = new String[0][];
         }
-        for (int k = 0; k < actions.length; k++) b.addAction(0, actions[k][1], openWith(ctx, it, actions[k][0], id * 10 + k + 1));
+        for (int k = 0; k < actions.length; k++) {
+            String act = actions[k][0];
+            // wellness buttons are saved in place (app stays closed); car "log it" / "update km" need the app's form
+            boolean inPlace = NotifActionReceiver.handlesInPlace(act) && !it.optString("kind").startsWith("car");
+            b.addAction(0, actions[k][1], inPlace ? inPlaceAction(ctx, it, act, id * 10 + k + 1) : openWith(ctx, it, act, id * 10 + k + 1));
+        }
 
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         // one stand-up and one water notification at a time: a newer one replaces an older one in the shade

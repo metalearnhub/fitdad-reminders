@@ -268,6 +268,7 @@ public class ReminderGate extends BroadcastReceiver {
             mp.setOnErrorListener((m, w, e) -> { m.release(); if (pr != null) pr.finish(); return true; });
             mp.prepare();
             mp.start();
+            android.util.Log.i("UpkeepGate", "ringing on alarm stream (ringerMode=" + mode + ", dnd=" + dnd + ") for " + kind);
             done = true;
         } catch (Exception ignored) {
         } finally {

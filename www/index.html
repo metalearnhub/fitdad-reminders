@@ -7,7 +7,7 @@
   <title>Upkeep</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="on-today">
   <header class="top">
     <div class="brand"><span class="logo">U</span> Upkeep</div>
     <div class="date" id="todayLabel"></div>
@@ -15,52 +15,58 @@
 
   <main>
     <!-- TODAY -->
-    <section class="view active" id="view-today">
-      <div class="card status-card" id="statusCard">
-        <div class="status-row">
-          <span class="pill" id="statusPill">Not started</span>
-          <span class="muted" id="sessionInfo"></span>
+    <section class="view active today" id="view-today">
+      <!-- WATER — top half -->
+      <div class="card half water-half">
+        <div class="half-head">
+          <h2>💧 Water</h2>
+          <span class="muted small" id="waterGoalLabel"></span>
         </div>
-        <h1 id="statusHeadline">Ready to work?</h1>
-        <p class="muted" id="statusSub">Tap Start when you sit down. Reminders begin right away.</p>
-        <div class="btn-row" id="sessionButtons"></div>
-      </div>
-
-      <div class="card water-card">
-        <div class="water-head">
-          <h2>Water</h2>
-          <span class="muted" id="waterGoalLabel"></span>
-        </div>
-        <div class="water-body">
-          <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
-            <circle class="ring-bg" cx="60" cy="60" r="52" />
-            <circle class="ring-fg" id="waterRing" cx="60" cy="60" r="52" />
-          </svg>
-          <div class="ring-text">
-            <div class="big" id="waterAmount">0.00 L</div>
-            <div class="muted" id="waterLeft"></div>
+        <div class="half-body">
+          <div class="ringbox">
+            <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="ring-bg" cx="60" cy="60" r="52" />
+              <circle class="ring-fg" id="waterRing" cx="60" cy="60" r="52" />
+            </svg>
+            <div class="ring-text"><div class="ring-big" id="waterAmount">0.00 L</div><div class="ring-sub" id="waterLeft"></div></div>
+          </div>
+          <div class="half-stats">
+            <div class="stat-main" id="waterPlan"></div>
+            <div class="stat-line" id="nextWater"></div>
+            <div class="stat-ago water-c" id="waterAgo"></div>
+            <button class="linkbtn left" id="bedEdit">🌙 <span id="bedLabel"></span></button>
           </div>
         </div>
-        <p class="muted small center" id="waterPlan"></p>
-        <p class="ago water-c" id="waterAgo"></p>
-        <button class="linkbtn" id="bedEdit">🌙 <span id="bedLabel"></span> · change</button>
         <div class="btn-row">
-          <button class="btn ghost" id="waterMinus" aria-label="Undo one glass">−</button>
+          <button class="btn ghost undo" id="waterMinus" aria-label="Undo one glass">−</button>
           <button class="btn water" id="waterPlus">+ Glass</button>
         </div>
       </div>
 
-      <div class="card stand-card">
-        <div class="water-head">
-          <h2>Stand-ups</h2>
-          <span class="muted" id="standEveryLabel"></span>
+      <!-- STAND-UPS — bottom half, same size -->
+      <div class="card half stand-half">
+        <div class="half-head">
+          <h2>🧍 Stand-ups</h2>
+          <span class="muted small" id="standEveryLabel"></span>
         </div>
-        <div class="stand-row">
-          <div class="big" id="standCount">0</div>
+        <div class="half-body">
+          <div class="ringbox">
+            <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="ring-bg" cx="60" cy="60" r="52" />
+              <circle class="ring-fg stand-fg" id="standRing" cx="60" cy="60" r="52" />
+            </svg>
+            <div class="ring-text"><div class="ring-big" id="standCount">0</div><div class="ring-sub" id="standOf"></div></div>
+          </div>
+          <div class="half-stats">
+            <div class="stat-main" id="standInfo"></div>
+            <div class="stat-line" id="nextStand"></div>
+            <div class="stat-ago stand-c" id="standAgo"></div>
+          </div>
+        </div>
+        <div class="btn-row">
           <button class="btn stand" id="standPlus">I stood up ✓</button>
         </div>
-        <p class="ago stand-c" id="standAgo"></p>
-        <p class="muted small" id="nextLabel"></p>
+        <p class="muted small" id="nextLabel" hidden></p>
       </div>
     </section>
 
@@ -165,6 +171,13 @@
       </div>
     </section>
   </main>
+
+  <!-- Work control — slim bar above the tabs, Today only -->
+  <div class="workbar" id="statusCard">
+    <span class="pill" id="statusPill">Off</span>
+    <div class="wb-text"><b id="statusHeadline"></b><span class="muted" id="sessionInfo"></span><span id="statusSub" hidden></span></div>
+    <div class="wb-btns" id="sessionButtons"></div>
+  </div>
 
   <nav class="tabs">
     <button class="tab active" data-view="today">Today</button>

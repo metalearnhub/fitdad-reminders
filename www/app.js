@@ -234,6 +234,7 @@
 
   // ---------- Deep links from the home-screen widget ----------
   function showTab(name) {
+    document.body.classList.toggle('on-today', name === 'today');
     document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.view === name));
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + name));
     if (name === 'stats') renderStats();
@@ -246,8 +247,7 @@
     if (what === 'start') {
       if (today().status !== 'active') startSession();
       showTab('today');
-    } else if (what === 'stats') showTab('stats');
-    else showTab('today');
+    } else showTab('today'); // widget / notification always open the main tab
     await save(); render(); await reschedule();
   }
 
@@ -275,8 +275,9 @@
     const a = ev.actionId;
     const k = kind === 'check' ? 'water' : kind;
 
+    showTab('today'); // anything coming from a notification lands on the main tab
     // Tapping the notification itself opens the app on a confirm sheet with the same choices
-    if (a === 'tap') { if (['stand', 'water', 'nudge'].includes(k)) openSheet(k); return; }
+    if (a === 'tap') { showTab('today'); if (['stand', 'water', 'nudge'].includes(k)) openSheet(k); return; }
 
     // "Done" / "Drank" were already saved natively the moment the button was tapped (see MainActivity) —
     // load() above picked them up, so here we only refresh the screen and re-plan.
@@ -685,6 +686,8 @@
     if (w) parts.push(`${parts.length ? "next" : "Next"} water ${fmtTime(new Date(w.at))}`);
     if (!parts.length && nd) parts.push(`Next nudge ${new Date(nd.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
     $('nextLabel').textContent = parts.join(' · ');
+    if ($('nextStand')) $('nextStand').textContent = s ? `Next stand-up ${fmtTime(new Date(s.at))}` : (today().status === 'active' ? '' : 'Start work to turn them on');
+    if ($('nextWater')) $('nextWater').textContent = w ? `Next glass ${fmtTime(new Date(w.at))}` : '';
   }
 
   function render() {
@@ -701,39 +704,35 @@
       btns.appendChild(b);
     };
 
+    const st = dayStats(logicalKey());
+    const sinceStart = t.startedAt ? fmtDur(Date.now() - (t.segStart || t.startedAt)) : '';
     if (t.status === 'active') {
       pill.textContent = 'Working'; pill.classList.add('active');
-      $('statusHeadline').textContent = 'Reminders are on';
-      $('statusSub').textContent = `Stand-ups run until you end the day or bedtime (${fmtTime(new Date(sessionEnd(t)))}).`;
-      $('sessionInfo').textContent = `Since ${fmtTime(new Date(t.startedAt))}`;
-      mk('Pause', 'ghost', pauseSession); mk('Done working ✓', 'primary', endSession);
+      $('statusHeadline').textContent = sinceStart;
+      $('sessionInfo').textContent = `since ${fmtTime(new Date(t.segStart || t.startedAt))}`;
+      mk('Pause', 'ghost', pauseSession); mk('Done ✓', 'primary', endSession);
     } else if (t.status === 'paused') {
       pill.textContent = 'Paused'; pill.classList.add('paused');
       $('statusHeadline').textContent = 'On a break';
-      $('statusSub').textContent = 'Reminders are paused. Resume when you sit back down.';
-      $('sessionInfo').textContent = '';
-      mk('Resume', 'primary', startSession); mk('Done working ✓', 'ghost', endSession);
+      $('sessionInfo').textContent = `${fmtDur(st.workMs)} worked`;
+      mk('Resume', 'primary', startSession); mk('Done ✓', 'ghost', endSession);
     } else if (t.status === 'ended') {
-      const st = dayStats(logicalKey());
-      const segs = t.segments || [];
-      pill.textContent = 'Done working';
-      $('statusHeadline').textContent = `Worked ${fmtDur(st.workMs)} today`;
-      $('statusSub').textContent = `${st.stands}${st.expected ? '/' + st.expected : ''} stand-ups · longest sit ${fmtDur(st.longest)}. Stand-ups off; water keeps going until bedtime.`;
-      $('sessionInfo').textContent = segs.length ? `Ended ${fmtTime(new Date(segs[segs.length - 1][1]))}` : '';
-      mk('Back to work', 'ghost', startSession); mk('See results', 'primary', showWorkSummary);
+      pill.textContent = 'Done';
+      $('statusHeadline').textContent = `${fmtDur(st.workMs)} worked`;
+      $('sessionInfo').textContent = 'stand-ups off';
+      mk('Results', 'ghost', showWorkSummary); mk('▶ Work', 'primary', startSession);
     } else if (t.status === 'off') {
       pill.textContent = 'Day off'; pill.classList.add('off');
       $('statusHeadline').textContent = 'Rest day';
-      $('statusSub').textContent = 'No stand-up alarms today. Water reminders still run until bedtime.';
-      $('sessionInfo').textContent = '';
-      mk('Start anyway', 'primary', startSession);
+      $('sessionInfo').textContent = 'stand-ups off';
+      mk('▶ Start work', 'primary', startSession);
     } else {
-      pill.textContent = 'Not started';
-      $('statusHeadline').textContent = 'Ready to work?';
-      $('statusSub').textContent = `Tap Start — water and stand-ups get planned from now until bedtime (${fmtTime(new Date(currentWindow().bedAt))}). If you forget, I'll nudge you at ${fmtTime(atTime(new Date(), settings.nudgeTime))}.`;
-      $('sessionInfo').textContent = '';
-      mk('Start day', 'primary', startSession); mk('Day off', 'ghost', dayOff);
+      pill.textContent = 'Off';
+      $('statusHeadline').textContent = 'Not started';
+      $('sessionInfo').textContent = `nudge ${fmtTime(atTime(new Date(), settings.nudgeTime))}`;
+      mk('Day off', 'ghost', dayOff); mk('▶ Start work', 'primary', startSession);
     }
+    $('statusSub').textContent = '';
 
     // water (today's start → bedtime)
     const wt = waterRec();
@@ -746,17 +745,23 @@
     const total = totalGlasses(), gl = glassesLeft(wt.water);
     const cwin = currentWindow();
     const pace = waterPace(wt, cwin, Date.now());
-    const paceTxt = !pace || gl === 0 ? '' : pace.diff >= 2 ? ` · ahead by ${pace.diff} — slow down` : pace.diff <= -2 ? ` · behind by ${-pace.diff}` : ' · on pace';
-    $('waterPlan').textContent = !cwin.start && gl > 0 ? `${total} glasses × ${settings.glass} ml — plan starts when you tap Start (or log a glass)` : (gl > 0
-      ? `Glass ${total - gl + 1} of ${total} · ${gl} × ${settings.glass} ml left${paceTxt}`
-      : `All ${total} glasses done — reminders stopped for today`)
-      ;
-    $('bedLabel').textContent = `Bedtime ${fmtTime(new Date(cwin.bedAt))} · last glass by ${fmtTime(new Date(cwin.end))}`;
+    const chip = !pace || gl === 0 || !cwin.start ? '' : pace.diff >= 2 ? `<span class="chip-s warn">Ahead by ${pace.diff} · slow down</span>`
+      : pace.diff <= -2 ? `<span class="chip-s bad">Behind by ${-pace.diff}</span>` : '<span class="chip-s ok">On pace</span>';
+    $('waterPlan').innerHTML = gl === 0 ? `All ${total} glasses done 🎉`
+      : `Glass ${total - gl + 1} of ${total} ${chip}<div class="stat-line">${gl} × ${settings.glass} ml to go</div>`;
+    $('bedLabel').textContent = `Bed ${fmtTime(new Date(cwin.bedAt))} · last glass ${fmtTime(new Date(cwin.end))} · change`;
     $('waterPlus').textContent = `+ ${settings.glass} ml`;
 
     // stand
+    const working = t.status === 'active' || t.status === 'paused';
     $('standCount').textContent = t.stands;
+    $('standOf').textContent = st.expected ? `of ${st.expected}` : 'today';
+    $('standRing').style.strokeDashoffset = String(326.7 * (1 - (st.expected ? Math.min(1, t.stands / st.expected) : (t.stands ? 1 : 0))));
     $('standEveryLabel').textContent = `Every ${settings.standEvery} min`;
+    $('standInfo').textContent = t.status === 'active' ? (st.expected ? `${Math.round(100 * Math.min(1, t.stands / st.expected))}% · longest sit ${fmtDur(st.longest)}` : `Working · longest sit ${fmtDur(st.longest)}`)
+      : t.status === 'paused' ? 'Paused — reminders on hold'
+      : t.status === 'ended' ? `Done for today · longest sit ${fmtDur(st.longest)}`
+      : 'Not working — reminders off';
     if ($('view-stats').classList.contains('active')) renderStats();
   }
 
@@ -996,8 +1001,10 @@
     const r = today();
     const last = (k) => (r.log || []).filter((e) => e.k === k).sort((a, b) => b.t - a.t)[0];
     const st = last('stand'), wa = last('water');
-    if ($('standAgo')) $('standAgo').textContent = st ? `Last stood up ${agoText(st.t)} · ${fmtTime(new Date(st.t))} via ${SRC[st.src] || st.src}` : 'No stand-up logged yet today';
-    if ($('waterAgo')) $('waterAgo').textContent = wa ? `Last glass ${agoText(wa.t)} · ${fmtTime(new Date(wa.t))} via ${SRC[wa.src] || wa.src}` : 'No glass logged yet today';
+    if ($('standAgo')) $('standAgo').textContent = st ? `Last stood up ${agoText(st.t)}` : 'No stand-up yet today';
+    if ($('waterAgo')) $('waterAgo').textContent = wa ? `Last glass ${agoText(wa.t)}` : 'No glass yet today';
+    if ($('standAgo')) $('standAgo').title = st ? `${fmtTime(new Date(st.t))} via ${SRC[st.src] || st.src}` : '';
+    if ($('waterAgo')) $('waterAgo').title = wa ? `${fmtTime(new Date(wa.t))} via ${SRC[wa.src] || wa.src}` : '';
   }
 
   // ---------- Boot ----------

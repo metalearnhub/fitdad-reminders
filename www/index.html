@@ -163,7 +163,7 @@
           <button class="btn ghost" id="backupRestoreOpen">⟲ Restore…</button>
         </div>
         <button class="btn danger full" id="resetOpen" style="margin:10px 0 0">🗑 Reset data…</button>
-        <input type="file" id="backupFile" accept=".json,application/json,text/plain" hidden />
+        <input type="file" id="backupFile" accept=".zip,.json,application/zip,application/json,text/plain" hidden />
       </div>
     </section>
 
@@ -196,6 +196,7 @@
 
   <div class="sheet" id="sheet"><div class="sheet-card" id="sheetBody"></div></div>
   <div class="toast" id="toast"></div>
+  <script src="vendor/jszip.min.js"></script>
   <script src="car.js"></script>
   <script src="app.js"></script>
 </body>

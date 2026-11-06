@@ -1028,7 +1028,9 @@
     $('resetOpen').onclick = openReset;
     $('backupFile').onchange = async (e) => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
-      previewRestore(await f.text(), 'file'); e.target.value = '';
+      const buf = new Uint8Array(await f.arrayBuffer());
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      previewRestore(buf[0] === 0x50 && buf[1] === 0x4b ? { b64: btoa(bin) } : { text: new TextDecoder().decode(buf) }, 'file'); e.target.value = '';
     };
     $('sheet').onclick = (e) => { if (e.target.id === 'sheet') closeSheet(); };
     $('saveSettings').onclick = async () => { readSettings(); await save(); render(); await reschedule(); toast('Saved — reminders updated'); };
@@ -1083,34 +1085,65 @@
   const stamp = () => { const d = new Date(); return `${dayKey(d)}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; };
   const REASON = { 'before-reset': 'Auto · before reset', 'before-restore': 'Auto · before restore', manual: 'Manual backup', file: 'From file' };
 
-  async function saveRestorePoint(reason, toDownloads) {
-    const name = `upkeep-backup-${stamp()}-${reason}.json`;
+  // Backups are ZIP files: data.json + receipts/ (photos and PDFs you attached) + README.txt
+  const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', pdf: 'application/pdf' };
+  async function buildBackupZip(reason) {
+    const zip = new JSZip();
+    const meta = { app: 'fitdad', v: 3, at: new Date().toISOString(), reason };
+    zip.file('data.json', JSON.stringify({ ...meta, settings, days, car: extraData.car }, null, 1));
     let receipts = {};
     try { if (Car && extraData.car) receipts = await Car.exportReceipts(); } catch (_) { }
-    const data = JSON.stringify({ app: 'fitdad', v: 2, at: new Date().toISOString(), reason, settings, days, car: extraData.car, receipts });
+    const folder = zip.folder('receipts');
+    Object.keys(receipts).forEach((id) => { const d = receipts[id]; if (d) folder.file(id, d.slice(d.indexOf(',') + 1), { base64: true }); });
+    zip.file('README.txt', `Upkeep backup\nMade: ${new Date().toString()}\nReason: ${reason}\n\ndata.json  — water, stand-ups, car records, settings\nreceipts/  — ${Object.keys(receipts).length} receipt file(s)\n\nRestore it from Upkeep → Settings → Restore… → Upload a backup file.\n`);
+    return zip.generateAsync({ type: 'base64', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  }
+  // Read a backup from a ZIP (base64) or an older .json backup (text) → one object incl. receipts as data URLs
+  async function parseBackup(input) {
+    if (input.b64 && input.b64.startsWith('UEsD')) { // "PK\x03\x04"
+      const zip = await JSZip.loadAsync(input.b64, { base64: true });
+      const f = zip.file('data.json'); if (!f) throw new Error('no data.json in the ZIP');
+      const b = JSON.parse(await f.async('string'));
+      b.receipts = {};
+      const files = zip.folder('receipts').file(/.*/);
+      for (const x of files) {
+        const id = x.name.split('/').pop(), ext = id.split('.').pop().toLowerCase();
+        b.receipts[id] = `data:${MIME[ext] || 'application/octet-stream'};base64,` + (await x.async('base64'));
+      }
+      return b;
+    }
+    const text = input.text != null ? input.text : new TextDecoder().decode(Uint8Array.from(atob(input.b64 || ''), (ch) => ch.charCodeAt(0)));
+    return JSON.parse(String(text).trim());
+  }
+  async function saveRestorePoint(reason, toDownloads) {
+    const name = `upkeep-backup-${stamp()}-${reason}.zip`;
+    const b64 = await buildBackupZip(reason);
     if (isNative) {
-      const r = await Widget.backupSave({ name, data, downloads: !!toDownloads });
+      const r = await Widget.backupSave({ name, b64, downloads: !!toDownloads });
       if (toDownloads && !r.downloads) throw new Error(r.downloadsError || 'could not write to Downloads');
       return { name, where: r.downloads || null };
     }
     let store = {}; try { store = JSON.parse(localStorage.getItem('upkeep_backups') || '{}'); } catch (_) { }
-    store[name] = { data, mtime: Date.now() };
+    store[name] = { b64, mtime: Date.now() };
     try { localStorage.setItem('upkeep_backups', JSON.stringify(store)); } catch (_) { }
     if (toDownloads) {
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = name; a.click();
+      a.href = 'data:application/zip;base64,' + b64; a.download = name; a.click();
     }
     return { name, where: toDownloads ? 'Downloads/' + name : null };
   }
+
   async function listRestorePoints() {
     if (isNative) return ((await Widget.backupList()).items || []);
     let store = {}; try { store = JSON.parse(localStorage.getItem('upkeep_backups') || '{}'); } catch (_) { }
-    return Object.keys(store).map((name) => ({ name, mtime: store[name].mtime, size: store[name].data.length })).sort((a, b) => b.mtime - a.mtime);
+    return Object.keys(store).map((name) => ({ name, mtime: store[name].mtime, size: (store[name].b64 || store[name].data || "").length })).sort((a, b) => b.mtime - a.mtime);
   }
   async function readRestorePoint(name) {
-    if (isNative) return (await Widget.backupRead({ name })).data;
-    return JSON.parse(localStorage.getItem('upkeep_backups') || '{}')[name].data;
+    if (isNative) { const r = await Widget.backupRead({ name }); return r.b64 ? { b64: r.b64 } : { text: r.data }; }
+    const e = JSON.parse(localStorage.getItem('upkeep_backups') || '{}')[name];
+    return e.b64 ? { b64: e.b64 } : { text: e.data };
   }
+
 
   // ---- per-feature pieces of a day record (water and stand-ups share one record per day) ----
   function clearFeatureDay(r, f) {
@@ -1208,24 +1241,27 @@
     showSheet(`<div class="sheet-icon">⟲</div><h2>Restore</h2>
       <p class="muted small">Pick a restore point to preview it. You choose which features to bring back.</p>
       <ul class="carlist rp-list">${items.length ? items.map((it) => {
-        const m = it.name.match(/(\d{4}-\d{2}-\d{2})-(\d{2})(\d{2})(\d{2})-([a-z-]+)\.json$/);
+        const m = it.name.match(/(\d{4}-\d{2}-\d{2})-(\d{2})(\d{2})(\d{2})-([a-z-]+)\.(json|zip)$/);
         const when = m ? fmtStamp(new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}`).getTime()) : fmtStamp(it.mtime);
-        return `<li class="caritem" data-rp="${it.name}"><span class="ci-icon">🗂</span><span class="ci-main"><b>${when}</b><span class="muted small">${REASON[m && m[5]] || 'Backup'} · ${Math.max(1, Math.round(it.size / 1024))} KB</span></span><span>›</span></li>`;
+        return `<li class="caritem" data-rp="${it.name}"><span class="ci-icon">🗂</span><span class="ci-main"><b>${when}</b><span class="muted small">${REASON[m && m[5]] || 'Backup'} · ${/\.zip$/.test(it.name) ? 'ZIP' : 'JSON'} · ${it.size > 1048576 ? (it.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(it.size / 1024)) + ' KB'}</span></span><span>›</span></li>`;
       }).join('') : '<li class="muted small">No restore points yet. One is made automatically before every reset and restore.</li>'}</ul>
       <div class="sheet-btns"><button class="btn ghost" id="rpFile">⬆ Upload a backup file…</button><button class="btn ghost" id="rpClose">Close</button></div>`, (body) => {
       $('rpClose').onclick = closeSheet;
       $('rpFile').onclick = async () => {
         if (isNative) {
-          try { const r = await Widget.importBackup(); if (r && r.data) previewRestore(r.data, 'file'); } catch (e) { toast('Could not open: ' + (e.message || e)); }
+          try {
+            const r = await Widget.importBackup();
+            if (r && r.b64) previewRestore(r.b64.startsWith('UEsD') ? { b64: r.b64 } : { text: new TextDecoder().decode(Uint8Array.from(atob(r.b64), (ch) => ch.charCodeAt(0))) }, 'file');
+          } catch (e) { toast('Could not open: ' + (e.message || e)); }
         } else $('backupFile').click();
       };
       body.querySelectorAll('[data-rp]').forEach((li) => { li.onclick = async () => { try { previewRestore(await readRestorePoint(li.dataset.rp), li.dataset.rp); } catch (e) { toast('Could not read: ' + (e.message || e)); } }; });
     });
   }
 
-  function previewRestore(text, source) {
+  async function previewRestore(input, source) {
     let b;
-    try { b = JSON.parse(String(text).trim()); if (b.app !== 'fitdad' || !b.days) throw new Error('not an Upkeep backup'); }
+    try { b = await parseBackup(input); if (b.app !== 'fitdad' || !b.days) throw new Error('not an Upkeep backup'); }
     catch (e) { toast('Invalid backup: ' + e.message); return; }
     const sm = summarizeBackup(b);
     showSheet(`<div class="sheet-icon">🔍</div><h2>Restore point</h2>

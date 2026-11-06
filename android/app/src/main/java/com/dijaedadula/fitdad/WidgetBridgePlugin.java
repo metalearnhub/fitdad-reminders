@@ -142,17 +142,17 @@ public class WidgetBridgePlugin extends Plugin {
     /** Save a restore point. Always stored in the app; with downloads=true also copied to Download/Upkeep/. */
     @PluginMethod
     public void backupSave(PluginCall call) {
-        String name = call.getString("name"), data = call.getString("data");
-        if (name == null || data == null || name.contains("/")) { call.reject("bad name/data"); return; }
-        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+        String name = call.getString("name"), data = call.getString("data"), b64 = call.getString("b64");
+        if (name == null || (data == null && b64 == null) || name.contains("/")) { call.reject("bad name/data"); return; }
+        byte[] bytes = b64 != null ? android.util.Base64.decode(b64, android.util.Base64.DEFAULT) : data.getBytes(StandardCharsets.UTF_8);
         JSObject ret = new JSObject();
         try {
             try (FileOutputStream out = new FileOutputStream(new File(backupDir(), name))) { out.write(bytes); }
             // keep the 30 newest restore points inside the app
             File[] all = backupDir().listFiles();
-            if (all != null && all.length > 30) {
+            if (all != null && all.length > 20) {
                 Arrays.sort(all, (x, y) -> Long.compare(y.lastModified(), x.lastModified()));
-                for (int i = 30; i < all.length; i++) all[i].delete();
+                for (int i = 20; i < all.length; i++) all[i].delete();
             }
             ret.put("saved", true);
         } catch (Exception e) { call.reject("Could not save restore point: " + e.getMessage()); return; }
@@ -161,7 +161,7 @@ public class WidgetBridgePlugin extends Plugin {
                 if (Build.VERSION.SDK_INT >= 29) {
                     ContentValues cv = new ContentValues();
                     cv.put(MediaStore.Downloads.DISPLAY_NAME, name);
-                    cv.put(MediaStore.Downloads.MIME_TYPE, "application/json");
+                    cv.put(MediaStore.Downloads.MIME_TYPE, name.endsWith(".zip") ? "application/zip" : "application/json");
                     cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Upkeep");
                     Uri uri = getContext().getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
                     try (OutputStream out = getContext().getContentResolver().openOutputStream(uri)) { out.write(bytes); }
@@ -200,7 +200,10 @@ public class WidgetBridgePlugin extends Plugin {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             byte[] b = new byte[8192]; int n;
             while ((n = in.read(b)) > 0) buf.write(b, 0, n);
-            JSObject ret = new JSObject(); ret.put("data", buf.toString("UTF-8")); call.resolve(ret);
+            JSObject ret = new JSObject();
+            if (name.endsWith(".zip")) ret.put("b64", android.util.Base64.encodeToString(buf.toByteArray(), android.util.Base64.NO_WRAP));
+            else ret.put("data", buf.toString("UTF-8"));
+            call.resolve(ret);
         } catch (Exception e) { call.reject("Could not read: " + e.getMessage()); }
     }
 
@@ -238,7 +241,7 @@ public class WidgetBridgePlugin extends Plugin {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         i.addCategory(Intent.CATEGORY_OPENABLE);
         i.setType("*/*");
-        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "application/json", "text/plain", "application/octet-stream" });
+        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "application/zip", "application/x-zip-compressed", "application/json", "text/plain", "application/octet-stream" });
         startActivityForResult(call, i, "onImport");
     }
 
@@ -253,9 +256,9 @@ public class WidgetBridgePlugin extends Plugin {
             byte[] b = new byte[8192]; int n;
             while ((n = in.read(b)) > 0) {
                 buf.write(b, 0, n);
-                if (buf.size() > 10 * 1024 * 1024) throw new Exception("File too large");
+                if (buf.size() > 80 * 1024 * 1024) throw new Exception("File too large");
             }
-            ret.put("data", buf.toString("UTF-8"));
+            ret.put("b64", android.util.Base64.encodeToString(buf.toByteArray(), android.util.Base64.NO_WRAP));
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("Could not read file: " + e.getMessage());

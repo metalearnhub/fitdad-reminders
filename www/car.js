@@ -292,9 +292,11 @@ window.UpkeepCar = function (api) {
     let wn = 0;
     data().history.forEach((r) => {
       const c = data().cars.find((x) => x.id === r.carId); if (!c || wn >= 150) return;
-      const wi = warrantyInfo(r, c); if (!wi || wi.expired || wi.until == null) return;
-      const at = new Date(wi.until - 14 * DAY); at.setHours(9, 0, 0, 0);
-      if (at.getTime() > now) out.push({ id: ID_BASE + 600 + wn++, title: `🛡 Warranty ending soon: ${r.name}`, body: `${c.name} — warranty until ${fmtDate(wi.until)}. Check it now if something's wrong.`, channelId: CH, actionTypeId: '', extra: { kind: 'carwarranty', recId: r.id }, at: at.getTime() });
+      warrantiesOf(r, c).forEach((w) => {
+        if (w.expired || w.until == null || wn >= 150) return;
+        const at = new Date(w.until - 14 * DAY); at.setHours(9, 0, 0, 0);
+        if (at.getTime() > now) out.push({ id: ID_BASE + 600 + wn++, title: `🛡 Warranty ending soon: ${w.label}`, body: `${c.name} — ${r.name}: warranty until ${fmtDate(w.until)}. Have it checked now if something's wrong.`, channelId: CH, actionTypeId: '', extra: { kind: 'carwarranty', recId: r.id }, at: at.getTime() });
+      });
     });
     return out.slice(0, 200);
   }
@@ -1048,23 +1050,38 @@ window.UpkeepCar = function (api) {
   const native = api.native || null;
   const recsOf = (c) => data().history.filter((h) => h.carId === c.id);
 
-  function warrantyInfo(r, c) {
-    const w = r.warranty;
-    if (!w || (!w.months && !w.km)) return null;
-    const until = w.months ? addMonths(r.t, w.months) : null;
-    const kmUntil = w.km ? (r.km || 0) + w.km : null;
+  function oneWarranty(label, start, startKm, months, kmLimit, c) {
+    if (!months && !kmLimit) return null;
+    const until = months ? addMonths(start, months) : null;
+    const kmUntil = kmLimit ? (startKm || 0) + kmLimit : null;
     const now = Date.now(), km = currentKm(c);
     const expired = (until != null && now > until) || (kmUntil != null && km > kmUntil);
     const daysLeft = until != null ? Math.ceil((until - now) / DAY) : null;
     const kmLeft = kmUntil != null ? kmUntil - km : null;
     const soon = !expired && ((daysLeft != null && daysLeft <= 30) || (kmLeft != null && kmLeft <= 1000));
-    const parts = [];
-    if (until != null) parts.push(expired && now > until ? `ended ${fmtDate(until)}` : `until ${fmtDate(until)}`);
-    if (kmUntil != null) parts.push(expired && km > kmUntil ? `ended at ${fmtKm(kmUntil)}` : `${fmtKm(Math.max(0, kmLeft))} left`);
-    return { until, kmUntil, expired, soon, daysLeft, kmLeft, text: parts.join(' · ') };
+    const bits = [];
+    if (until != null) bits.push(expired && now > until ? `ended ${fmtDate(until)}` : `until ${fmtDate(until)}`);
+    if (kmUntil != null) bits.push(expired && km > kmUntil ? `ended at ${fmtKm(kmUntil)}` : `${fmtKm(Math.max(0, kmLeft))} left`);
+    return { label, months, until, kmUntil, expired, soon, daysLeft, kmLeft, text: bits.join(' · ') };
+  }
+  // Every warranty on a record: each item's own, the labor/service one, and older whole-record warranties
+  function warrantiesOf(r, c) {
+    const out = [];
+    (r.parts || []).forEach((p) => { const w = oneWarranty(p.name || 'Item', r.t, r.km, p.wm || 0, 0, c); if (w) out.push(w); });
+    if (r.laborWm) { const w = oneWarranty('Labor / service', r.t, r.km, r.laborWm, 0, c); if (w) out.push(w); }
+    if (r.warranty && (r.warranty.months || r.warranty.km)) { const w = oneWarranty(r.name, r.t, r.km, r.warranty.months, r.warranty.km, c); if (w) out.push(w); }
+    return out;
+  }
+  // Summary for a record: soonest-ending active warranty, or "ended" if all are over
+  function warrantyInfo(r, c) {
+    const ws = warrantiesOf(r, c); if (!ws.length) return null;
+    const act = ws.filter((w) => !w.expired).sort((a, b) => (a.until || 9e15) - (b.until || 9e15));
+    if (!act.length) return { ...ws[0], expired: true, count: ws.length, active: 0 };
+    return { ...act[0], count: ws.length, active: act.length };
   }
   const warrantyChip = (wi) => !wi ? '' : wi.expired ? '<span class="chip-s bad">Warranty ended</span>'
-    : wi.soon ? `<span class="chip-s warn">Warranty ${wi.daysLeft != null ? wi.daysLeft + 'd' : fmtKm(wi.kmLeft)} left</span>` : '<span class="chip-s ok">Under warranty</span>';
+    : wi.soon ? `<span class="chip-s warn">${wi.label ? esc(wi.label) + ': ' : ''}${wi.daysLeft != null ? wi.daysLeft + 'd' : fmtKm(wi.kmLeft)} left</span>`
+    : `<span class="chip-s ok">Under warranty${wi.active > 1 ? ' · ' + wi.active : ''}</span>`;
 
   function recRowHTML(r) {
     const c = data().cars.find((x) => x.id === r.carId) || car();
@@ -1080,8 +1097,9 @@ window.UpkeepCar = function (api) {
 
   function recordsHTML(c) {
     const recs = recsOf(c).slice().sort((a, b) => b.t - a.t);
-    const withW = recs.map((r) => ({ r, wi: warrantyInfo(r, c) })).filter((x) => x.wi);
-    const active = withW.filter((x) => !x.wi.expired).sort((a, b) => (a.wi.until || 9e15) - (b.wi.until || 9e15));
+    const allW = recs.flatMap((r) => warrantiesOf(r, c).map((w) => ({ r, w })));
+    const active = allW.filter((x) => !x.w.expired).sort((a, b) => (a.w.until || 9e15) - (b.w.until || 9e15));
+    const withW = allW;
     const yr = new Date().getFullYear();
     const byGroup = {};
     recs.filter((r) => new Date(r.t).getFullYear() === yr).forEach((r) => { const g = groupOf(r); byGroup[g] = (byGroup[g] || 0) + (r.cost || 0); });
@@ -1091,8 +1109,8 @@ window.UpkeepCar = function (api) {
     return `
       <div class="card">
         <div class="water-head"><h2>🛡 Warranties</h2><span class="muted small">${active.length} active · ${withW.length - active.length} ended</span></div>
-        ${active.length ? `<ul class="carlist">${active.map(({ r, wi }) => `<li class="caritem ${wi.soon ? 'soon' : ''}" data-rec="${r.id}">
-          <span class="ci-icon">${r.icon || G(groupOf(r)).icon}</span><span class="ci-main"><b>${esc(r.name)}</b><span class="muted small">${wi.text}</span></span>${warrantyChip(wi)}</li>`).join('')}</ul>`
+        ${active.length ? `<ul class="carlist">${active.map(({ r, w }) => `<li class="caritem ${w.soon ? 'soon' : ''}" data-rec="${r.id}">
+          <span class="ci-icon">${r.icon || G(groupOf(r)).icon}</span><span class="ci-main"><b>${esc(w.label)}</b><span class="muted small">${esc(r.name)} · ${fmtDate(r.t)}</span><span class="small">${w.months ? w.months + ' mo · ' : ''}${w.text}</span></span>${warrantyChip({ ...w, label: '' })}</li>`).join('')}</ul>`
           : '<p class="muted small">No active warranties. Add one when you log a repair or replacement.</p>'}
       </div>
       ${Object.keys(byGroup).length ? `<div class="card"><h2>Repairs by system · ${yr}</h2><ul class="timeline">${GROUPS.filter((g) => byGroup[g.id] != null).map((g) => `<li><span>${g.icon} ${g.name}</span><span>${peso(byGroup[g.id])}</span></li>`).join('')}</ul></div>` : ''}
@@ -1157,47 +1175,66 @@ window.UpkeepCar = function (api) {
   const thumbsHTML = (list, removable) => (list || []).map((r) => `<span class="thumb" data-thumb="${r.id}">${r.type === 'pdf' ? '<span class="pdf">PDF</span>' : `<img src="${r.thumb}" alt="" />`}${removable ? `<button class="x" data-rm="${r.id}">×</button>` : ''}</span>`).join('');
 
   // ---------- add / edit a record ----------
-  const W_PRESETS = [[0, 'None'], [3, '3 mo'], [6, '6 mo'], [12, '1 yr'], [24, '2 yrs'], [36, '3 yrs']];
+  const W_OPTS = [0, 1, 2, 3, 6, 12, 18, 24, 36]; // months
+  const wSelect = (attr, v) => `<select ${attr} class="wsel">${W_OPTS.map((m) => `<option value="${m}" ${(+v || 0) === m ? 'selected' : ''}>${m ? `🛡 ${m} mo` : 'No warranty'}</option>`).join('')}</select>`;
+  // one-tap item names, so you rarely have to type
+  const SUGGEST = {
+    aircon: ['Compressor', 'Condenser', 'Evaporator', 'Expansion valve', 'Receiver drier', 'Blower motor', 'Cabin filter', 'Freon recharge', 'System flush', 'Evaporator cleaning (pull-down)', 'Leak test'],
+    engine: ['Engine oil', 'Oil filter', 'Air filter', 'Spark plugs', 'Fuel filter', 'Drive belt', 'Timing belt', 'O2 sensor', 'Throttle cleaning'],
+    tires: ['Tire', 'Wheel alignment', 'Wheel balancing', 'Tire rotation', 'Valve stem'],
+    brakes: ['Brake pads', 'Brake shoes', 'Rotor resurfacing', 'Brake fluid', 'Caliper'],
+    fluids: ['Coolant', 'Radiator', 'Thermostat', 'Water pump', 'Transmission fluid', 'Power steering fluid'],
+    electrical: ['Battery', 'Alternator', 'Starter', 'Headlight bulb', 'Fuse'],
+    suspension: ['Shock absorber', 'Stabilizer link', 'Tie rod end', 'Ball joint', 'Bushing'],
+    body: ['Wiper blades', 'Windshield', 'Side mirror', 'Paint / repaint'],
+    papers: ['LTO registration fee', 'CTPL insurance', 'Comprehensive insurance', 'Emission test'],
+    other: [],
+  };
+
   function recordForm(c, { item, rec }) {
     const its = itemsOf(c);
     const r = rec ? JSON.parse(JSON.stringify(rec)) : {
       group: item ? groupOf(item) : 'other', name: item ? item.name : '', itemId: item ? item.id : '', t: Date.now(), km: currentKm(c) || '',
-      parts: item && isLto(item) ? [{ name: 'LTO registration fee', cost: '' }, { name: 'CTPL insurance', cost: '' }, { name: 'Emission test', cost: '' }] : [{ name: '', cost: '' }],
-      labor: '', shop: '', notes: '', receipts: [], warranty: null,
+      parts: item && isLto(item) ? [{ name: 'LTO registration fee', cost: '' }, { name: 'CTPL insurance', cost: '' }, { name: 'Emission test', cost: '' }] : [],
+      labor: '', laborWm: 0, shop: '', notes: '', receipts: [], costMode: 'items', total: '',
     };
-    if (!r.parts || !r.parts.length) r.parts = [{ name: rec && !rec.parts ? rec.name : '', cost: rec && !rec.parts ? rec.cost || '' : '' }];
-    let wMonths = r.warranty ? r.warranty.months || 0 : 0;
+    r.parts = (r.parts || []).map((p) => ({ name: p.name || '', cost: p.cost || '', wm: p.wm || 0 }));
+    if (rec && !rec.costMode) r.costMode = 'items';
+    if (r.costMode === 'total' && rec) r.total = rec.cost || '';
     const draw = () => sheet(`
       <div class="sheet-icon">🧾</div><h2>${rec ? 'Edit record' : 'Log repair / replacement'}</h2>
       <div class="form">
         <label>System<select id="rfGroup">${GROUPS.map((g) => `<option value="${g.id}" ${r.group === g.id ? 'selected' : ''}>${g.icon} ${g.name}</option>`).join('')}</select></label>
-        <label>What was done<input id="rfName" value="${esc(r.name)}" placeholder="e.g. Replaced AC compressor" /></label>
+        <label>Title<input id="rfName" value="${esc(r.name)}" placeholder="e.g. Aircon service" /></label>
         <div class="row2">
           <label>Date<input id="rfDate" type="date" value="${isoDay(r.t)}" /></label>
           <label>Odometer (km)<input id="rfKm" type="number" inputmode="numeric" value="${r.km || ''}" /></label>
         </div>
-        <label>Parts &amp; costs</label>
-        <div id="rfParts">${r.parts.map((p, k) => `<div class="row2 partrow">
-          <input data-pn="${k}" value="${esc(p.name)}" placeholder="Part, e.g. Compressor" />
-          <input data-pc="${k}" type="number" inputmode="decimal" value="${p.cost}" placeholder="₱" style="max-width:110px" />
-          ${r.parts.length > 1 ? `<button class="x2" data-prm="${k}">×</button>` : ''}</div>`).join('')}</div>
-        <button class="linkbtn left" id="rfAddPart">+ Add part</button>
-        <div class="row2">
-          <label>Labor (₱)<input id="rfLabor" type="number" inputmode="decimal" value="${r.labor || ''}" /></label>
-          <label>Total<input id="rfTotal" readonly value="" /></label>
+        <label>Cost</label>
+        <div class="seg seg-wide" style="margin:0">
+          <button class="chip ${r.costMode === 'total' ? 'on' : ''}" data-mode="total">One total (whole receipt)</button>
+          <button class="chip ${r.costMode === 'items' ? 'on' : ''}" data-mode="items">Price per item</button>
         </div>
+        ${r.costMode === 'total' ? `<label>Receipt total (₱)<input id="rfTotalIn" type="number" inputmode="decimal" value="${r.total || ''}" placeholder="e.g. 28000" /></label>` : ''}
+        <label>Items replaced or done <span class="muted small">— tap to add</span></label>
+        <div class="chips tight">${(SUGGEST[r.group] || []).filter((n) => !r.parts.some((p) => p.name === n)).map((n) => `<button class="chip" data-sug="${esc(n)}">+ ${esc(n)}</button>`).join('')}<button class="chip" data-sug="">+ Other…</button></div>
+        <div id="rfParts">${r.parts.map((p, k) => `<div class="itemrow">
+          <input data-pn="${k}" value="${esc(p.name)}" placeholder="Item" />
+          ${r.costMode === 'items' ? `<input data-pc="${k}" type="number" inputmode="decimal" value="${p.cost}" placeholder="₱" class="cost" />` : ''}
+          ${wSelect(`data-pw="${k}"`, p.wm)}
+          <button class="x2" data-prm="${k}">×</button></div>`).join('')}</div>
+        <div class="itemrow labor">
+          <span class="lbl">Labor / service</span>
+          ${r.costMode === 'items' ? `<input id="rfLabor" type="number" inputmode="decimal" value="${r.labor || ''}" placeholder="₱" class="cost" />` : ''}
+          ${wSelect('id="rfLaborW"', r.laborWm)}
+        </div>
+        ${r.costMode === 'items' ? '<label>Total<input id="rfTotal" readonly value="" /></label>' : ''}
         <label>Shop / mechanic<input id="rfShop" value="${esc(r.shop || '')}" placeholder="optional" /></label>
-        <label>Warranty</label>
-        <div class="chips tight">${W_PRESETS.map(([m, l]) => `<button class="chip ${wMonths === m ? 'on' : ''}" data-wm="${m}">${l}</button>`).join('')}</div>
-        <div class="row2">
-          <label>Months<input id="rfWm" type="number" inputmode="numeric" value="${wMonths || ''}" placeholder="—" /></label>
-          <label>and/or km<input id="rfWk" type="number" inputmode="numeric" value="${r.warranty && r.warranty.km ? r.warranty.km : ''}" placeholder="—" /></label>
-        </div>
         <label>Receipts</label>
         <div class="thumbs" id="rfThumbs">${thumbsHTML(r.receipts, true)}
           <label class="thumb add">📷<input type="file" id="rfFile" accept="image/*,application/pdf" multiple hidden /></label></div>
         ${its.length ? `<label>Also resets this schedule<select id="rfItem"><option value="">— none —</option>${its.map((i) => `<option value="${i.id}" ${r.itemId === i.id ? 'selected' : ''}>${i.icon || '🔧'} ${esc(i.name)}</option>`).join('')}</select></label>` : ''}
-        <label>Notes<input id="rfNotes" value="${esc(r.notes || '')}" placeholder="brand, part number…" /></label>
+        <label>Notes<input id="rfNotes" value="${esc(r.notes || '')}" placeholder="optional" /></label>
       </div>
       <div class="sheet-btns">
         <button class="btn primary" id="rfSave">Save record</button>
@@ -1205,34 +1242,44 @@ window.UpkeepCar = function (api) {
         <button class="btn ghost" id="rfCancel">Cancel</button>
       </div>`, (body) => {
       const grab = () => {
-        r.group = $('rfGroup').value; r.name = $('rfName').value; r.km = $('rfKm').value; r.labor = $('rfLabor').value;
+        r.group = $('rfGroup').value; r.name = $('rfName').value; r.km = $('rfKm').value;
         r.t = $('rfDate').value ? new Date($('rfDate').value + 'T12:00:00').getTime() : Date.now();
         r.shop = $('rfShop').value; r.notes = $('rfNotes').value; if ($('rfItem')) r.itemId = $('rfItem').value;
+        if ($('rfLabor')) r.labor = $('rfLabor').value;
+        r.laborWm = Number($('rfLaborW').value) || 0;
+        if ($('rfTotalIn')) r.total = $('rfTotalIn').value;
         body.querySelectorAll('[data-pn]').forEach((x) => { r.parts[+x.dataset.pn].name = x.value; });
         body.querySelectorAll('[data-pc]').forEach((x) => { r.parts[+x.dataset.pc].cost = x.value; });
-        wMonths = Number($('rfWm').value) || 0;
-        r.warranty = wMonths || Number($('rfWk').value) ? { months: wMonths, km: Number($('rfWk').value) || 0 } : null;
+        body.querySelectorAll('[data-pw]').forEach((x) => { r.parts[+x.dataset.pw].wm = Number(x.value) || 0; });
       };
-      const total = () => { grab(); const t = r.parts.reduce((a, p) => a + (Number(p.cost) || 0), 0) + (Number(r.labor) || 0); $('rfTotal').value = t ? peso(t) : ''; return t; };
+      const total = () => {
+        grab();
+        if (r.costMode === 'total') return Number(r.total) || 0;
+        const t = r.parts.reduce((a, p) => a + (Number(p.cost) || 0), 0) + (Number(r.labor) || 0);
+        if ($('rfTotal')) $('rfTotal').value = t ? peso(t) : ''; return t;
+      };
       total();
       body.querySelectorAll('[data-pc], #rfLabor').forEach((x) => { x.oninput = total; });
-      $('rfAddPart').onclick = () => { grab(); r.parts.push({ name: '', cost: '' }); draw(); };
+      body.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { grab(); if (b.dataset.mode === 'total' && !r.total) { const t = r.parts.reduce((a, p) => a + (Number(p.cost) || 0), 0) + (Number(r.labor) || 0); r.total = t || ''; } r.costMode = b.dataset.mode; draw(); }; });
+      $('rfGroup').onchange = () => { grab(); draw(); };
+      body.querySelectorAll('[data-sug]').forEach((b) => { b.onclick = () => { grab(); r.parts.push({ name: b.dataset.sug, cost: '', wm: 0 }); if (!r.name && b.dataset.sug) r.name = b.dataset.sug; draw(); if (!b.dataset.sug) { const ins = body.querySelectorAll('[data-pn]'); } }; });
       body.querySelectorAll('[data-prm]').forEach((b) => { b.onclick = () => { grab(); r.parts.splice(+b.dataset.prm, 1); draw(); }; });
-      body.querySelectorAll('[data-wm]').forEach((b) => { b.onclick = () => { grab(); wMonths = +b.dataset.wm; $('rfWm').value = wMonths || ''; r.warranty = wMonths || Number($('rfWk').value) ? { months: wMonths, km: Number($('rfWk').value) || 0 } : null; draw(); }; });
-      $('rfItem') && ($('rfItem').onchange = () => { const it = its.find((i) => i.id === $('rfItem').value); if (it) { grab(); if (!r.name) r.name = it.name; r.group = groupOf(it); draw(); } });
+      if ($('rfItem')) $('rfItem').onchange = () => { const it = its.find((i) => i.id === $('rfItem').value); if (it) { grab(); if (!r.name) r.name = it.name; r.group = groupOf(it); draw(); } };
       $('rfFile').onchange = async (e) => { grab(); const add = await addReceiptFiles([...e.target.files]); r.receipts = (r.receipts || []).concat(add); draw(); };
       body.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); grab(); r.receipts = r.receipts.filter((x) => x.id !== b.dataset.rm); draw(); }; });
       body.querySelectorAll('[data-thumb]').forEach((im) => { im.onclick = () => viewReceipt(im.dataset.thumb); });
       $('rfCancel').onclick = () => { if (!rec) (r.receipts || []).forEach((x) => deleteReceipt(x.id)); closeSheet(); };
       $('rfSave').onclick = async () => {
         const t = total();
-        if (!r.name.trim() && !r.parts.some((p) => p.name.trim())) { toast('Say what was done'); return; }
+        const parts = r.parts.filter((p) => p.name.trim() || Number(p.cost) || p.wm).map((p) => ({ name: p.name.trim() || 'Item', cost: r.costMode === 'items' ? Number(p.cost) || 0 : 0, wm: p.wm || 0 }));
+        const title = r.name.trim() || (parts.length ? parts.map((p) => p.name).slice(0, 3).join(', ') : '');
+        if (!title) { toast('Add a title or tap an item'); return; }
         const km = r.km === '' ? 0 : Math.round(Number(r.km));
         const it = its.find((i) => i.id === r.itemId);
         const out = {
-          carId: c.id, itemId: r.itemId || null, group: r.group, name: r.name.trim() || r.parts.find((p) => p.name.trim()).name.trim(),
-          icon: it ? it.icon : G(r.group).icon, t: r.t, km, parts: r.parts.filter((p) => p.name.trim() || Number(p.cost)).map((p) => ({ name: p.name.trim(), cost: Number(p.cost) || 0 })),
-          labor: Number(r.labor) || 0, cost: t, shop: r.shop.trim(), notes: r.notes.trim(), receipts: r.receipts || [], warranty: r.warranty,
+          carId: c.id, itemId: r.itemId || null, group: r.group, name: title, icon: it ? it.icon : G(r.group).icon, t: r.t, km,
+          parts, labor: r.costMode === 'items' ? Number(r.labor) || 0 : 0, laborWm: r.laborWm || 0, costMode: r.costMode, cost: t,
+          shop: r.shop.trim(), notes: r.notes.trim(), receipts: r.receipts || [], warranty: rec ? rec.warranty || null : null,
         };
         const before = statusMap(c), prevKm = currentKm(c);
         if (km > currentKm(c)) addOdo(c, km, isoDay(r.t) === isoDay(Date.now()) ? Date.now() : Math.min(r.t, Date.now()));
@@ -1241,8 +1288,9 @@ window.UpkeepCar = function (api) {
           (rec.receipts || []).filter((x) => !out.receipts.some((y) => y.id === x.id)).forEach((x) => deleteReceipt(x.id));
           Object.assign(rec, out);
         } else data().history.push({ id: uid(), ...out });
+        const nw = parts.filter((p) => p.wm).length + (out.laborWm ? 1 : 0);
         closeSheet(); view = 'records';
-        await commitWithOdoCheck(c, before, prevKm, `${out.name} saved${out.warranty ? ' · warranty tracked' : ''}`);
+        await commitWithOdoCheck(c, before, prevKm, `${title} saved${nw ? ` · ${nw} warrant${nw > 1 ? 'ies' : 'y'} tracked` : ''}`);
       };
       if ($('rfDel')) $('rfDel').onclick = async () => {
         if (!confirm('Delete this record and its receipts?')) return;
@@ -1261,9 +1309,16 @@ window.UpkeepCar = function (api) {
     sheet(`
       <div class="sheet-icon">${r.icon || G(groupOf(r)).icon}</div><h2>${esc(r.name)}</h2>
       <p class="muted">${G(groupOf(r)).name} · ${fmtDate(r.t)}${r.km ? ' · ' + fmtKm(r.km) : ''}${r.shop ? ' · ' + esc(r.shop) : ''}</p>
-      ${wi ? `<p>${warrantyChip(wi)} <span class="small">${wi.text}</span></p>` : '<p class="muted small">No warranty recorded</p>'}
-      ${(r.parts || []).length ? `<ul class="timeline" style="text-align:left">${r.parts.map((p) => `<li><span>${esc(p.name || '—')}</span><span>${p.cost ? peso(p.cost) : ''}</span></li>`).join('')}
-        ${r.labor ? `<li><span>Labor</span><span>${peso(r.labor)}</span></li>` : ''}<li><b>Total</b><b>${peso(r.cost)}</b></li></ul>` : `<p><b>${peso(r.cost)}</b></p>`}
+      ${(() => {
+        const ws = warrantiesOf(r, c); const wFor = (label) => ws.find((w) => w.label === label);
+        const row = (name, cost, w) => `<li><span>${esc(name)}${w ? `<br><span class="small ${w.expired ? 'miss' : w.soon ? '' : 'good-c'}">🛡 ${w.months ? w.months + ' mo · ' : ''}${w.text}</span>` : ''}</span><span>${cost ? peso(cost) : ''}</span></li>`;
+        return `<ul class="timeline" style="text-align:left">
+          ${(r.parts || []).map((p) => row(p.name || '—', r.costMode === 'total' ? 0 : p.cost, p.wm ? wFor(p.name || 'Item') : null)).join('')}
+          ${r.labor || r.laborWm ? row('Labor / service', r.costMode === 'total' ? 0 : r.labor, r.laborWm ? wFor('Labor / service') : null) : ''}
+          <li><b>${r.costMode === 'total' ? 'Total (whole receipt)' : 'Total'}</b><b>${peso(r.cost)}</b></li></ul>
+          ${r.warranty && (r.warranty.months || r.warranty.km) ? `<p class="small">🛡 Whole job: ${wFor(r.name) ? wFor(r.name).text : ''}</p>` : ''}
+          ${!ws.length ? '<p class="muted small">No warranty recorded</p>' : ''}`;
+      })()}
       ${(r.receipts || []).length ? `<div class="thumbs" style="justify-content:center">${thumbsHTML(r.receipts)}</div>` : ''}
       ${r.notes ? `<p class="small">${esc(r.notes)}</p>` : ''}
       <div class="sheet-btns"><button class="btn ghost" id="rsEdit">Edit</button><button class="btn ghost" id="rsClose">Close</button></div>`, (body) => {

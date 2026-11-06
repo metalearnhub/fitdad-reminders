@@ -122,3 +122,5 @@ textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px s
 .miss { color: var(--danger); font-weight: 700; }
 .paste { margin-top: 12px; } .paste summary { cursor: pointer; padding: 6px 0; } .paste textarea { margin-top: 8px; }
 #s-waterPreview { white-space: pre-line; }
+.ago { font-size: 13px; font-weight: 700; text-align: center; margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+#standAgo { text-align: left; }

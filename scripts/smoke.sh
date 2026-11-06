@@ -88,6 +88,18 @@ echo "widget: done working at +61" >> smoke/gate.txt
 adb shell cmd notification cancel_all >/dev/null 2>&1 || true
 jump 125
 shade "+125 min (stand reminders due but work ended -> expect NO stand)"
+# ---- Notification buttons handled in place (app must stay closed) ----
+adb shell input keyevent KEYCODE_HOME; sleep 2
+adb shell am force-stop com.dijaedadula.fitdad; sleep 1
+B0=$(adb shell run-as com.dijaedadula.fitdad cat shared_prefs/CapacitorStorage.xml | grep -o '&quot;k&quot;:&quot;water&quot;' | wc -l)
+adb shell am broadcast -n com.dijaedadula.fitdad/.NotifActionReceiver -a com.dijaedadula.fitdad.NOTIF_ACTION.2001.drank --ei id 2001 --es action drank --es kind water | tail -1 | tee -a smoke/inplace.txt
+adb shell am broadcast -n com.dijaedadula.fitdad/.NotifActionReceiver -a com.dijaedadula.fitdad.NOTIF_ACTION.1001.snooze --ei id 1001 --es action snooze --es kind stand | tail -1 | tee -a smoke/inplace.txt
+sleep 3
+B1=$(adb shell run-as com.dijaedadula.fitdad cat shared_prefs/CapacitorStorage.xml | grep -o '&quot;k&quot;:&quot;water&quot;' | wc -l)
+echo "water events before=$B0 after=$B1" | tee -a smoke/inplace.txt
+echo "resumed: $(adb shell dumpsys activity activities | grep -m1 -E 'mResumedActivity|ResumedActivity')" | tee -a smoke/inplace.txt
+echo "snooze armed: $(adb shell run-as com.dijaedadula.fitdad cat shared_prefs/upkeep_sched.xml | grep -oE '&quot;5[0-9]{3}&quot;:' | head -3 | tr '\n' ' ')" | tee -a smoke/inplace.txt
+adb exec-out screencap -p > smoke/09-inplace-home.png
 adb logcat -d > smoke/logcat-full.txt
 grep -iE "Capacitor/Console|JavaScript Error|AndroidRuntime|FATAL|LocalNotification" smoke/logcat-full.txt > smoke/logcat-app.txt || true
 exit 0

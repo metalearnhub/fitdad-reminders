@@ -33,6 +33,16 @@
             android:layout_width="match_parent" android:layout_height="7dp" android:layout_marginTop="6dp"
             android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress" />
 
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:layout_marginTop="4dp">
+            <Chronometer android:id="@+id/w_ago_stand" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:textColor="#34D399" android:textSize="11sp" android:visibility="gone" />
+            <Chronometer android:id="@+id/w_ago_water" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:textColor="#38BDF8" android:textSize="11sp" android:visibility="gone" />
+            <TextView android:id="@+id/w_ago_none" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="No taps yet today" android:textColor="#8B95A5" android:textSize="11sp" />
+        </LinearLayout>
+
         <TextView android:id="@+id/w_week" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="5dp" android:text="" android:textColor="#8B95A5" android:textSize="11sp" android:maxLines="1" />
     </LinearLayout>

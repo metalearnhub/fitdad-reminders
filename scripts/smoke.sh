@@ -77,6 +77,7 @@ echo "alarm-clock alarms armed: $(adb shell dumpsys alarm | grep -c 'ALARM_CLOCK
 adb shell cmd audio set-ringer-mode silent 2>&1 | tee -a smoke/gate.txt
 adb shell settings put global mode_ringer 0
 adb shell cmd audio set-ringer-mode 0 2>/dev/null
+adb shell cmd notification set_dnd on 2>&1 | tee -a smoke/gate.txt
 echo "ringer: $(adb shell settings get global mode_ringer) (0 = silent)" | tee -a smoke/gate.txt
 adb logcat -c
 jump 31
@@ -86,6 +87,7 @@ adb logcat -d | grep -E "UpkeepGate" | head -3 | tee -a smoke/gate.txt
 adb shell dumpsys audio | grep -iE "usage=USAGE_ALARM|AUDIO_USAGE_ALARM" | head -3 >> smoke/gate.txt
 adb logcat -d | grep -iE "MediaPlayer|AudioTrack|fitdad_alarm" | grep -i "fitdad\|alarm" | head -5 >> smoke/gate.txt
 adb shell settings put global mode_ringer 2
+adb shell cmd notification set_dnd off >/dev/null 2>&1
 jump 37
 shade "+37 min (follow-up 5 min after an unanswered stand-up -> expect 'Did you stand up?')"
 adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_STAND >/dev/null

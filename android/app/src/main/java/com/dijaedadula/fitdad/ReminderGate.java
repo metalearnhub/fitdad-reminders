@@ -248,7 +248,7 @@ public class ReminderGate extends BroadcastReceiver {
                 NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
                 dnd = nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL;
             }
-            if (mode == android.media.AudioManager.RINGER_MODE_NORMAL && !dnd) return;
+            if (mode == android.media.AudioManager.RINGER_MODE_NORMAL && !dnd) { android.util.Log.i("UpkeepGate", "normal ring mode — notification sound plays"); return; }
             String kind = it.optString("kind");
             int raw = ("water".equals(kind) || "check".equals(kind)) ? R.raw.fitdad_water : R.raw.fitdad_alarm;
             android.media.AudioAttributes attrs = new android.media.AudioAttributes.Builder()
@@ -270,7 +270,7 @@ public class ReminderGate extends BroadcastReceiver {
             mp.start();
             android.util.Log.i("UpkeepGate", "ringing on alarm stream (ringerMode=" + mode + ", dnd=" + dnd + ") for " + kind);
             done = true;
-        } catch (Exception ignored) {
+        } catch (Exception e) { android.util.Log.w("UpkeepGate", "silent-mode ring failed: " + e);
         } finally {
             if (!done && pr != null) pr.finish();
         }

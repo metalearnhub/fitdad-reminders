@@ -13,7 +13,16 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import android.content.ContentValues;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import com.getcapacitor.JSArray;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.util.Arrays;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -60,6 +69,79 @@ public class WidgetBridgePlugin extends Plugin {
     public void clearDelivered(PluginCall call) {
         ReminderGate.clearDelivered(getContext(), call.getString("kind", ""));
         call.resolve(new JSObject());
+    }
+
+    // ---------- Restore points: kept inside the app AND copied to Downloads/Upkeep ----------
+
+    private File backupDir() {
+        File d = new File(getContext().getFilesDir(), "backups");
+        if (!d.exists()) d.mkdirs();
+        return d;
+    }
+
+    /** Save a restore point. Always stored in the app; with downloads=true also copied to Download/Upkeep/. */
+    @PluginMethod
+    public void backupSave(PluginCall call) {
+        String name = call.getString("name"), data = call.getString("data");
+        if (name == null || data == null || name.contains("/")) { call.reject("bad name/data"); return; }
+        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+        JSObject ret = new JSObject();
+        try {
+            try (FileOutputStream out = new FileOutputStream(new File(backupDir(), name))) { out.write(bytes); }
+            // keep the 30 newest restore points inside the app
+            File[] all = backupDir().listFiles();
+            if (all != null && all.length > 30) {
+                Arrays.sort(all, (x, y) -> Long.compare(y.lastModified(), x.lastModified()));
+                for (int i = 30; i < all.length; i++) all[i].delete();
+            }
+            ret.put("saved", true);
+        } catch (Exception e) { call.reject("Could not save restore point: " + e.getMessage()); return; }
+        if (Boolean.TRUE.equals(call.getBoolean("downloads", false))) {
+            try {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues cv = new ContentValues();
+                    cv.put(MediaStore.Downloads.DISPLAY_NAME, name);
+                    cv.put(MediaStore.Downloads.MIME_TYPE, "application/json");
+                    cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Upkeep");
+                    Uri uri = getContext().getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                    try (OutputStream out = getContext().getContentResolver().openOutputStream(uri)) { out.write(bytes); }
+                    ret.put("downloads", "Download/Upkeep/" + name);
+                } else {
+                    File d = new File(getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "Upkeep");
+                    d.mkdirs();
+                    try (FileOutputStream out = new FileOutputStream(new File(d, name))) { out.write(bytes); }
+                    ret.put("downloads", d.getAbsolutePath() + "/" + name);
+                }
+            } catch (Exception e) { ret.put("downloadsError", e.getMessage()); }
+        }
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void backupList(PluginCall call) {
+        JSArray arr = new JSArray();
+        File[] all = backupDir().listFiles();
+        if (all != null) {
+            Arrays.sort(all, (x, y) -> Long.compare(y.lastModified(), x.lastModified()));
+            for (File f : all) {
+                JSObject o = new JSObject();
+                o.put("name", f.getName()); o.put("size", f.length()); o.put("mtime", f.lastModified());
+                arr.put(o);
+            }
+        }
+        JSObject ret = new JSObject(); ret.put("items", arr); call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void backupRead(PluginCall call) {
+        String name = call.getString("name");
+        if (name == null || name.contains("/")) { call.reject("bad name"); return; }
+        try (FileInputStream in = new FileInputStream(new File(backupDir(), name))) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] b = new byte[8192]; int n;
+            while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+            JSObject ret = new JSObject(); ret.put("data", buf.toString("UTF-8")); call.resolve(ret);
+        } catch (Exception e) { call.reject("Could not read: " + e.getMessage()); }
     }
 
     /** Opens "Save as…" (Downloads, Drive, etc.) and writes the backup JSON there. */

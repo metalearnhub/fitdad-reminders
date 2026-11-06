@@ -1020,49 +1020,16 @@
     $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); };
     $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); };
     $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); await reschedule(); };
-    const backupJSON = () => JSON.stringify({ app: 'fitdad', v: 1, at: new Date().toISOString(), settings, days, car: extraData.car }, null, 1);
-    const restoreFrom = async (text) => {
-      try {
-        const data = JSON.parse(String(text).trim());
-        if (data.app !== 'fitdad' || !data.days) throw new Error('not an Upkeep backup');
-        const n = Object.keys(data.days).length;
-        if (!confirm(`Restore backup from ${new Date(data.at).toLocaleString()} (${n} day${n === 1 ? '' : 's'} of history)? This replaces the data on this phone.`)) return;
-        settings = { ...DEFAULTS, ...(data.settings || {}) }; days = data.days; extraData.car = data.car || null;
-        await save(); render(); renderSettings(); await reschedule(); toast('Backup restored ✓');
-      } catch (e) { toast('Invalid backup: ' + e.message); }
+    $('backupNow').onclick = async () => {
+      try { const r = await saveRestorePoint('manual', true); toast(`Backup saved · ${r.where || r.name}`); }
+      catch (e) { toast('Could not save: ' + (e.message || e)); }
     };
-    $('backupDownload').onclick = async () => {
-      const name = `upkeep-backup-${dayKey()}.json`;
-      if (isNative) {
-        try {
-          const r = await Widget.exportBackup({ data: backupJSON(), filename: name });
-          toast(r && r.saved ? 'Backup saved ✓' : 'Backup cancelled');
-        } catch (e) { toast('Could not save: ' + (e.message || e)); }
-      } else {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([backupJSON()], { type: 'application/json' }));
-        a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      }
-    };
-    $('backupUpload').onclick = async () => {
-      if (isNative) {
-        try {
-          const r = await Widget.importBackup();
-          if (r && r.data) await restoreFrom(r.data);
-        } catch (e) { toast('Could not open: ' + (e.message || e)); }
-      } else $('backupFile').click();
-    };
+    $('backupRestoreOpen').onclick = openRestoreList;
+    $('resetOpen').onclick = openReset;
     $('backupFile').onchange = async (e) => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
-      await restoreFrom(await f.text()); e.target.value = '';
+      previewRestore(await f.text(), 'file'); e.target.value = '';
     };
-    $('backupCopy').onclick = async () => {
-      const txt = backupJSON();
-      $('backupText').value = txt;
-      try { await navigator.clipboard.writeText(txt); toast('Backup copied — paste it somewhere safe'); }
-      catch (_) { $('backupText').select(); toast('Backup ready — long-press the text to copy'); }
-    };
-    $('backupRestore').onclick = () => restoreFrom($('backupText').value);
     $('sheet').onclick = (e) => { if (e.target.id === 'sheet') closeSheet(); };
     $('saveSettings').onclick = async () => { readSettings(); await save(); render(); await reschedule(); toast('Saved — reminders updated'); };
     $('testAlarm').onclick = () => testNotif('stand');
@@ -1101,6 +1068,198 @@
     if ($('waterAgo')) $('waterAgo').textContent = wa ? `Last glass ${agoText(wa.t)}` : 'No glass yet today';
     if ($('standAgo')) $('standAgo').title = st ? `${fmtTime(new Date(st.t))} via ${SRC[st.src] || st.src}` : '';
     if ($('waterAgo')) $('waterAgo').title = wa ? `${fmtTime(new Date(wa.t))} via ${SRC[wa.src] || wa.src}` : '';
+  }
+
+
+  // ======================= Restore points, reset & restore =======================
+  const FEAT_NAME = { water: '💧 Water', stand: '🧍 Stand-ups', car: '🚗 Car' };
+  const WATER_K = ['water', 'skip_w', 'snooze_w'];
+  const STAND_K = ['stand', 'skip_s', 'snooze_s', 'endwork', 'dayoff'];
+  function showSheet(html, mount) {
+    $('sheetBody').innerHTML = html;
+    $('sheet').classList.add('show');
+    if (mount) mount($('sheetBody'));
+  }
+  const stamp = () => { const d = new Date(); return `${dayKey(d)}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; };
+  const REASON = { 'before-reset': 'Auto · before reset', 'before-restore': 'Auto · before restore', manual: 'Manual backup', file: 'From file' };
+
+  async function saveRestorePoint(reason, toDownloads) {
+    const name = `upkeep-backup-${stamp()}-${reason}.json`;
+    const data = JSON.stringify({ app: 'fitdad', v: 2, at: new Date().toISOString(), reason, settings, days, car: extraData.car });
+    if (isNative) {
+      const r = await Widget.backupSave({ name, data, downloads: !!toDownloads });
+      if (toDownloads && !r.downloads) throw new Error(r.downloadsError || 'could not write to Downloads');
+      return { name, where: r.downloads || null };
+    }
+    let store = {}; try { store = JSON.parse(localStorage.getItem('upkeep_backups') || '{}'); } catch (_) { }
+    store[name] = { data, mtime: Date.now() };
+    try { localStorage.setItem('upkeep_backups', JSON.stringify(store)); } catch (_) { }
+    if (toDownloads) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = name; a.click();
+    }
+    return { name, where: toDownloads ? 'Downloads/' + name : null };
+  }
+  async function listRestorePoints() {
+    if (isNative) return ((await Widget.backupList()).items || []);
+    let store = {}; try { store = JSON.parse(localStorage.getItem('upkeep_backups') || '{}'); } catch (_) { }
+    return Object.keys(store).map((name) => ({ name, mtime: store[name].mtime, size: store[name].data.length })).sort((a, b) => b.mtime - a.mtime);
+  }
+  async function readRestorePoint(name) {
+    if (isNative) return (await Widget.backupRead({ name })).data;
+    return JSON.parse(localStorage.getItem('upkeep_backups') || '{}')[name].data;
+  }
+
+  // ---- per-feature pieces of a day record (water and stand-ups share one record per day) ----
+  function clearFeatureDay(r, f) {
+    const keep = (arr, ks) => (arr || []).filter((e) => !ks.includes(e.k));
+    if (f === 'water') {
+      r.water = 0; r.log = keep(r.log, WATER_K);
+      r.fired = (r.fired || []).filter((x) => x.k !== 'water'); r.plan = (r.plan || []).filter((x) => x.k !== 'water');
+    } else if (f === 'stand') {
+      Object.assign(r, { stands: 0, status: 'idle', startedAt: null, pausedAt: null, pausedMs: 0, segStart: null, segments: [] });
+      r.log = keep(r.log, STAND_K);
+      r.fired = (r.fired || []).filter((x) => x.k !== 'stand'); r.plan = (r.plan || []).filter((x) => x.k !== 'stand');
+    }
+  }
+  function copyFeatureDay(dst, src, f) {
+    clearFeatureDay(dst, f);
+    if (!src) return;
+    const ks = f === 'water' ? WATER_K : STAND_K, k1 = f === 'water' ? 'water' : 'stand';
+    dst.log = (dst.log || []).concat((src.log || []).filter((e) => ks.includes(e.k))).sort((a, b) => a.t - b.t);
+    dst.fired = (dst.fired || []).concat((src.fired || []).filter((x) => x.k === k1));
+    if (f === 'water') dst.water = src.water || 0;
+    else ['stands', 'status', 'startedAt', 'pausedAt', 'pausedMs', 'segStart', 'segments'].forEach((key) => { if (src[key] !== undefined) dst[key] = src[key]; });
+    if (src.dayStart && !dst.dayStart) dst.dayStart = src.dayStart;
+  }
+
+  // ---- what a backup contains (for the preview) ----
+  function summarizeBackup(b) {
+    const ds = b.days || {}, keys = Object.keys(ds).sort();
+    const wDays = keys.filter((k) => (ds[k].water || 0) > 0);
+    const sDays = keys.filter((k) => (ds[k].stands || 0) > 0 || (ds[k].segments || []).length);
+    const range = (ks) => (ks.length ? `${fmtDay(ks[0])} – ${fmtDay(ks[ks.length - 1])}` : '');
+    const totalL = wDays.reduce((a, k) => a + (ds[k].water || 0), 0) / 1000;
+    const totalS = sDays.reduce((a, k) => a + (ds[k].stands || 0), 0);
+    const workMs = sDays.reduce((a, k) => a + (ds[k].segments || []).reduce((x, sg) => x + Math.max(0, (sg[1] || 0) - sg[0]), 0), 0);
+    const car = b.car || null, cars = car && car.cars ? car.cars : [];
+    const fills = cars.reduce((a, c) => a + ((c.fuel || []).length), 0);
+    const services = car && car.history ? car.history.length : 0;
+    const parts = car && car.items ? car.items.length : 0;
+    return {
+      water: wDays.length ? { has: true, text: `${wDays.length} day${wDays.length > 1 ? 's' : ''} · ${totalL.toFixed(1)} L total · ${range(wDays)}` } : { has: false, text: 'No water data' },
+      stand: sDays.length ? { has: true, text: `${sDays.length} day${sDays.length > 1 ? 's' : ''} · ${totalS} stand-ups · ${fmtDur(workMs)} worked · ${range(sDays)}` } : { has: false, text: 'No stand-up data' },
+      car: cars.length ? { has: true, text: `${cars.map((c) => c.name).join(', ')} · ${parts} parts · ${fills} fill-ups · ${services} services` } : { has: false, text: 'No car data' },
+      rows: keys.filter((k) => (ds[k].water || 0) > 0 || (ds[k].stands || 0) > 0).reverse().slice(0, 30)
+        .map((k) => ({ k, water: (ds[k].water || 0) / 1000, stands: ds[k].stands || 0 })),
+    };
+  }
+  const fmtDay = (k) => new Date(k + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: '2-digit' });
+  const fmtStamp = (t) => new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const checks = (opts) => opts.map((o) => `
+    <label class="checkrow"><input type="checkbox" data-f="${o.f}" ${o.on ? 'checked' : ''} ${o.disabled ? 'disabled' : ''}/>
+      <span><b>${o.label}</b><br><span class="muted small">${o.sub || ''}</span></span></label>`).join('');
+
+  // ---- RESET ----
+  function openReset() {
+    showSheet(`<div class="sheet-icon">🗑</div><h2>Reset data</h2>
+      <p class="muted small">Choose what to delete. A backup is saved to <b>Downloads/Upkeep</b> first, so you can restore it anytime. Settings are kept.</p>
+      <div class="checklist">${checks([
+        { f: 'all', label: 'Everything', sub: 'Water, stand-ups and car' },
+        { f: 'water', label: FEAT_NAME.water, sub: 'Glasses and water history' },
+        { f: 'stand', label: FEAT_NAME.stand, sub: 'Stand-ups, work sessions, day off' },
+        { f: 'car', label: FEAT_NAME.car, sub: 'Cars, parts, fuel and service history' }])}</div>
+      <div class="sheet-btns"><button class="btn primary" id="rsNext">Back up &amp; continue</button><button class="btn ghost" id="rsCancel">Cancel</button></div>`, (body) => {
+      const box = (f) => body.querySelector(`[data-f="${f}"]`);
+      box('all').onchange = () => ['water', 'stand', 'car'].forEach((f) => { box(f).checked = box('all').checked; });
+      ['water', 'stand', 'car'].forEach((f) => { box(f).onchange = () => { box('all').checked = ['water', 'stand', 'car'].every((x) => box(x).checked); }; });
+      $('rsCancel').onclick = closeSheet;
+      $('rsNext').onclick = async () => {
+        const sel = ['water', 'stand', 'car'].filter((f) => box(f).checked);
+        if (!sel.length) { toast('Tick at least one'); return; }
+        let saved;
+        try { saved = await saveRestorePoint('before-reset', true); }
+        catch (e) { toast('Backup failed — nothing was deleted (' + (e.message || e) + ')'); return; }
+        showSheet(`<div class="sheet-icon">✅</div><h2>Backup saved</h2>
+          <p class="small"><b>${saved.where || saved.name}</b></p>
+          <p class="muted small">Also kept inside Upkeep under Restore.</p>
+          <p>Delete <b>${sel.length === 3 ? 'everything' : sel.map((f) => FEAT_NAME[f]).join(' and ')}</b> now? This can't be undone except by restoring the backup.</p>
+          <div class="sheet-btns"><button class="btn danger" id="rsDo">Delete now</button><button class="btn ghost" id="rsNo">Cancel — keep my data</button></div>`, () => {
+          $('rsNo').onclick = () => { closeSheet(); toast('Nothing deleted'); };
+          $('rsDo').onclick = async () => {
+            Object.values(days).forEach((r) => { if (sel.includes('water')) clearFeatureDay(r, 'water'); if (sel.includes('stand')) clearFeatureDay(r, 'stand'); });
+            if (sel.length === 3) days = {};
+            if (sel.includes('car')) extraData.car = null;
+            closeSheet(); await save(); render(); renderSettings(); await reschedule();
+            if (Car && $('view-car').classList.contains('active')) Car.render();
+            toast('Deleted · backup is in Restore');
+          };
+        });
+      };
+    });
+  }
+
+  // ---- RESTORE ----
+  async function openRestoreList() {
+    let items = [];
+    try { items = await listRestorePoints(); } catch (_) { }
+    showSheet(`<div class="sheet-icon">⟲</div><h2>Restore</h2>
+      <p class="muted small">Pick a restore point to preview it. You choose which features to bring back.</p>
+      <ul class="carlist rp-list">${items.length ? items.map((it) => {
+        const m = it.name.match(/(\d{4}-\d{2}-\d{2})-(\d{2})(\d{2})(\d{2})-([a-z-]+)\.json$/);
+        const when = m ? fmtStamp(new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}`).getTime()) : fmtStamp(it.mtime);
+        return `<li class="caritem" data-rp="${it.name}"><span class="ci-icon">🗂</span><span class="ci-main"><b>${when}</b><span class="muted small">${REASON[m && m[5]] || 'Backup'} · ${Math.max(1, Math.round(it.size / 1024))} KB</span></span><span>›</span></li>`;
+      }).join('') : '<li class="muted small">No restore points yet. One is made automatically before every reset and restore.</li>'}</ul>
+      <div class="sheet-btns"><button class="btn ghost" id="rpFile">⬆ Upload a backup file…</button><button class="btn ghost" id="rpClose">Close</button></div>`, (body) => {
+      $('rpClose').onclick = closeSheet;
+      $('rpFile').onclick = async () => {
+        if (isNative) {
+          try { const r = await Widget.importBackup(); if (r && r.data) previewRestore(r.data, 'file'); } catch (e) { toast('Could not open: ' + (e.message || e)); }
+        } else $('backupFile').click();
+      };
+      body.querySelectorAll('[data-rp]').forEach((li) => { li.onclick = async () => { try { previewRestore(await readRestorePoint(li.dataset.rp), li.dataset.rp); } catch (e) { toast('Could not read: ' + (e.message || e)); } }; });
+    });
+  }
+
+  function previewRestore(text, source) {
+    let b;
+    try { b = JSON.parse(String(text).trim()); if (b.app !== 'fitdad' || !b.days) throw new Error('not an Upkeep backup'); }
+    catch (e) { toast('Invalid backup: ' + e.message); return; }
+    const sm = summarizeBackup(b);
+    showSheet(`<div class="sheet-icon">🔍</div><h2>Restore point</h2>
+      <p class="small"><b>${b.at ? fmtStamp(b.at) : 'Unknown date'}</b>${b.reason ? ' · ' + (REASON[b.reason] || b.reason) : ''}</p>
+      <p class="muted small">Ticked features are replaced with this backup. Unticked ones stay as they are now. Your current data is backed up first.</p>
+      <div class="checklist">${checks([
+        { f: 'water', label: FEAT_NAME.water, sub: sm.water.text, on: sm.water.has, disabled: !sm.water.has },
+        { f: 'stand', label: FEAT_NAME.stand, sub: sm.stand.text, on: sm.stand.has, disabled: !sm.stand.has },
+        { f: 'car', label: FEAT_NAME.car, sub: sm.car.text, on: sm.car.has, disabled: !sm.car.has },
+        { f: 'settings', label: '⚙️ Settings', sub: 'Goals, intervals, bedtime, features', on: false }])}</div>
+      ${sm.rows.length ? `<details class="paste"><summary>View data day by day (${sm.rows.length})</summary>
+        <div class="tablewrap"><table class="lb"><thead><tr><th>Day</th><th>💧 L</th><th>🧍</th></tr></thead>
+        <tbody>${sm.rows.map((r) => `<tr><td>${fmtDay(r.k)}</td><td>${r.water ? r.water.toFixed(2) : '—'}</td><td>${r.stands || '—'}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+      ${sm.car.has ? `<details class="paste"><summary>View car data</summary>${(b.car.cars || []).map((c) => `<p class="small"><b>${c.name}</b> · ${(c.odo || []).length ? Math.max(...c.odo.map((o) => o.km)).toLocaleString() + ' km' : 'no km'} · ${(c.fuel || []).length} fill-ups</p>`).join('')}
+        <ul class="timeline small">${(b.car.history || []).slice(-10).reverse().map((h) => `<li><span>${h.icon || '🔧'} ${h.name}</span><span class="muted">${new Date(h.t).toLocaleDateString()}</span></li>`).join('') || '<li class="muted">No service history</li>'}</ul></details>` : ''}
+      <div class="sheet-btns"><button class="btn primary" id="rsGo">Restore selected</button><button class="btn ghost" id="rsBack">Back</button></div>`, (body) => {
+      $('rsBack').onclick = openRestoreList;
+      $('rsGo').onclick = async () => {
+        const sel = [...body.querySelectorAll('[data-f]')].filter((x) => x.checked && !x.disabled).map((x) => x.dataset.f);
+        if (!sel.length) { toast('Tick at least one'); return; }
+        try { await saveRestorePoint('before-restore', false); } catch (_) { }
+        const bd = b.days || {};
+        ['water', 'stand'].forEach((f) => {
+          if (!sel.includes(f)) return;
+          new Set([...Object.keys(days), ...Object.keys(bd)]).forEach((k) => {
+            if (!days[k] && !bd[k]) return;
+            copyFeatureDay(rec(k), bd[k], f);
+          });
+        });
+        if (sel.includes('car')) extraData.car = b.car || null;
+        if (sel.includes('settings')) settings = { ...DEFAULTS, ...(b.settings || {}) };
+        closeSheet(); await save(); render(); renderSettings(); await reschedule();
+        if (Car && $('view-car').classList.contains('active')) Car.render();
+        toast(`Restored: ${sel.map((f) => f === 'settings' ? 'Settings' : FEAT_NAME[f]).join(', ')} ✓`);
+      };
+    });
   }
 
   // ---------- Boot ----------

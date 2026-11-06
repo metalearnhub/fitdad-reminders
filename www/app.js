@@ -860,6 +860,7 @@
     $('s-nudgeMax').value = settings.nudgeMax;
     $('s-checkTime').value = settings.checkTime;
     const F = feats(); ['water', 'stand', 'car'].forEach((k) => { $('f-' + k).checked = F[k]; });
+    $('s-ringSilent').checked = settings.ringOnSilent !== false;
     followDraft = { f: settings.followUp, r: settings.followUpRepeats };
     renderFollow();
     bedDraft = null;
@@ -1041,6 +1042,7 @@
     $('s-waterMode-auto').onclick = () => { modeDraft = 'auto'; renderWaterPlanner(); };
     $('s-waterMode-fixed').onclick = () => { modeDraft = 'fixed'; renderWaterPlanner(); };
     $('bedEdit').onclick = openBedSheet;
+    $('s-ringSilent').onchange = async () => { settings.ringOnSilent = $('s-ringSilent').checked; await save(); toast(settings.ringOnSilent ? 'Reminders will ring on Silent' : 'Reminders follow your Silent mode'); };
     // Feature toggles save and apply immediately
     ['water', 'stand', 'car'].forEach((k) => {
       $('f-' + k).onchange = async () => {

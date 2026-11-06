@@ -226,9 +226,53 @@ public class ReminderGate extends BroadcastReceiver {
             JSONObject root = FitDadWidget.load(ctx);
             if (!stillNeeded(ctx, root, it)) return;
             show(ctx, root, it);
+            ringThroughSilent(ctx, root, it, goAsync());
             String k = it.optString("kind");
             if (!it.optBoolean("follow", false) && ("stand".equals(k) || "water".equals(k))) markShown(ctx, "water".equals(k) ? "water" : "stand", it.optLong("at"));
         } catch (Exception ignored) { }
+    }
+
+    // ---------- Ring even when the phone is on Silent / Vibrate ----------
+    // On Silent the notification sound is muted by Android, so we play the same sound on the ALARM stream
+    // (which Silent mode doesn't mute, and Do Not Disturb allows by default) and vibrate like an alarm.
+    // On normal ring mode the notification's own sound plays, so nothing extra happens.
+    static void ringThroughSilent(Context ctx, JSONObject root, JSONObject it, PendingResult pr) {
+        boolean done = false;
+        try {
+            JSONObject st = root.optJSONObject("settings");
+            if (st != null && !st.optBoolean("ringOnSilent", true)) return;
+            android.media.AudioManager am = (android.media.AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            int mode = am.getRingerMode();
+            boolean dnd = false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+                dnd = nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL;
+            }
+            if (mode == android.media.AudioManager.RINGER_MODE_NORMAL && !dnd) return;
+            String kind = it.optString("kind");
+            int raw = ("water".equals(kind) || "check".equals(kind)) ? R.raw.fitdad_water : R.raw.fitdad_alarm;
+            android.media.AudioAttributes attrs = new android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
+            // vibrate (Silent mode turns off notification vibration)
+            try {
+                android.os.Vibrator v = (android.os.Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+                long[] pattern = { 0, 400, 200, 400, 200, 600 };
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) v.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1), attrs);
+                else v.vibrate(pattern, -1);
+            } catch (Exception ignored) { }
+            final android.media.MediaPlayer mp = new android.media.MediaPlayer();
+            mp.setAudioAttributes(attrs);
+            mp.setDataSource(ctx, android.net.Uri.parse("android.resource://" + ctx.getPackageName() + "/" + raw));
+            mp.setOnCompletionListener(m -> { m.release(); if (pr != null) pr.finish(); });
+            mp.setOnErrorListener((m, w, e) -> { m.release(); if (pr != null) pr.finish(); return true; });
+            mp.prepare();
+            mp.start();
+            done = true;
+        } catch (Exception ignored) {
+        } finally {
+            if (!done && pr != null) pr.finish();
+        }
     }
 
     /** The core rule: look at what you actually did (anywhere) before bothering you. */

@@ -274,7 +274,7 @@ public class FitDadWidget extends AppWidgetProvider {
         }
         v.setOnClickPendingIntent(R.id.w_btn_water, broadcast(ctx, ACTION_WATER, 1));
         v.setOnClickPendingIntent(R.id.w_btn_stand, broadcast(ctx, ACTION_STAND, 2));
-        v.setOnClickPendingIntent(R.id.w_stats_area, openApp(ctx, "fitdad://stats", 4));
+        v.setOnClickPendingIntent(R.id.w_stats_area, openApp(ctx, "fitdad://today", 4));
         return v;
     }
 }

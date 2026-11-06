@@ -369,7 +369,7 @@
       title: isStand ? 'Stand up now 🧍' : 'Drink water 💧',
       body: isStand ? 'Snooze is over. Get up and move for 2 minutes.' : `Have a ${settings.glass} ml glass.`,
       channel: isStand ? CH_ALARM : CH_WATER, type: isStand ? 'STAND' : 'WATER',
-      kind, follow: true, of: Date.now() + 90000, // stays quiet if you answer anywhere before it rings
+      kind, follow: true, snooze: true, of: Date.now() + 90000, // stays quiet if you answer anywhere before it rings
     }] });
     toast(`Snoozed ${minutes} min`);
   }

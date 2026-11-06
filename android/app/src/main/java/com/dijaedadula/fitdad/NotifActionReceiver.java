@@ -83,6 +83,7 @@ public class NotifActionReceiver extends BroadcastReceiver {
         it.put("type", stand ? "STAND" : "WATER");
         it.put("kind", kind);
         it.put("follow", true);
+        it.put("snooze", true);
         it.put("of", now + 90000);   // stays quiet if you answer anywhere before it rings
         JSONArray a = new JSONArray(); a.put(it);
         ReminderGate.addItems(ctx, a);

@@ -92,6 +92,17 @@ public class ReminderGate extends BroadcastReceiver {
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         long at = Math.max(it.optLong("at"), System.currentTimeMillis() + 1000);
         PendingIntent pi = firePI(ctx, it.optInt("id"), PendingIntent.FLAG_UPDATE_CURRENT);
+        boolean main = !it.optBoolean("follow", false) || it.optBoolean("snooze", false);
+        // Main reminders (and snoozes) use the alarm-clock path: exact even in deep sleep, never batched
+        // or rate-limited by battery saving — so they can't arrive late together with their follow-up.
+        if (main && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                Intent open = new Intent(ctx, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                PendingIntent show = PendingIntent.getActivity(ctx, 777, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, show), pi);
+                return;
+            } catch (Exception ignored) { /* fall back below */ }
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -213,13 +224,25 @@ public class ReminderGate extends BroadcastReceiver {
         saveItems(ctx, all);
         try {
             JSONObject root = FitDadWidget.load(ctx);
-            if (!stillNeeded(root, it)) return;
+            if (!stillNeeded(ctx, root, it)) return;
             show(ctx, root, it);
+            String k = it.optString("kind");
+            if (!it.optBoolean("follow", false) && ("stand".equals(k) || "water".equals(k))) markShown(ctx, "water".equals(k) ? "water" : "stand", it.optLong("at"));
         } catch (Exception ignored) { }
     }
 
     /** The core rule: look at what you actually did (anywhere) before bothering you. */
-    static boolean stillNeeded(JSONObject root, JSONObject it) throws Exception {
+    // Remember when a main reminder actually appeared, so a follow-up never shows for one that was skipped
+    static void markShown(Context ctx, String kind, long at) {
+        ctx.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().putLong("shown_" + kind, at).apply();
+    }
+    static boolean mainShown(Context ctx, String kind, long of, JSONObject it) {
+        if (it.optBoolean("snooze", false)) return true;
+        long shown = ctx.getSharedPreferences(STORE, Context.MODE_PRIVATE).getLong("shown_" + kind, 0);
+        return shown > 0 && Math.abs(shown - of) <= 5 * 60000;
+    }
+
+    static boolean stillNeeded(Context ctx, JSONObject root, JSONObject it) throws Exception {
         String kind = it.optString("kind");
         if ("test".equals(kind)) return true;
         // feature switched off in Settings → never ring for it
@@ -241,7 +264,7 @@ public class ReminderGate extends BroadcastReceiver {
             case "stand": {
                 if (!"active".equals(status)) return false;                      // paused, done working, day off
                 long last = lastAnswer(log, new String[] { "stand", "skip_s", "snooze_s", "endwork" });
-                if (follow) return last < of - 60000;                            // answered since it rang? stay quiet
+                if (follow) return mainShown(ctx, "stand", of, it) && last < of - 60000; // only after a main that really rang
                 if (gap > 0 && last > now - gap / 2) return false;               // stood up recently (app/widget/notification)
                 return true;
             }
@@ -251,7 +274,7 @@ public class ReminderGate extends BroadcastReceiver {
                 if (water >= goal) return false;                                 // goal reached
                 if ("check".equals(kind)) return goal - water > goal * 0.4;      // only if really behind
                 long last = lastAnswer(log, new String[] { "water", "skip_w", "snooze_w" });
-                if (follow) return last < of - 60000;
+                if (follow) return mainShown(ctx, "water", of, it) && last < of - 60000;
                 if (gap > 0 && last > now - gap / 2) return false;               // drank recently
                 return true;
             }

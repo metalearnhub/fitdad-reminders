@@ -73,8 +73,11 @@ adb shell cmd notification cancel_all >/dev/null 2>&1 || true
 T0=$(adb shell date +%s | tr -d '\r')
 echo "T0=$T0" | tee -a smoke/gate.txt
 adb shell run-as com.dijaedadula.fitdad cat shared_prefs/upkeep_sched.xml > smoke/sched.txt
+echo "alarm-clock alarms armed: $(adb shell dumpsys alarm | grep -c 'ALARM_CLOCK\|alarmClock')" | tee -a smoke/gate.txt
 jump 31
 shade "+31 min (stand reminder due, not answered -> expect STAND shown)"
+jump 37
+shade "+37 min (follow-up 5 min after an unanswered stand-up -> expect 'Did you stand up?')"
 adb shell am broadcast -n com.dijaedadula.fitdad/.FitDadWidget -a com.dijaedadula.fitdad.WIDGET_STAND >/dev/null
 shade "+31 after widget Stood up (expect stand notification cleared)"
 jump 50

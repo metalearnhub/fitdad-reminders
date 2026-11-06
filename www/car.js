@@ -41,8 +41,7 @@ window.UpkeepCar = function (api) {
     { name: 'Aircon refrigerant check', km: 0, months: 24, icon: '🧊', fuel: true, why: 'Low freon makes the AC run longer and blow warm.' },
     { name: 'Shock absorbers', km: 80000, months: 60, icon: '🔩', fuel: false, why: 'Worn shocks hurt handling and wear tires faster.' },
     { name: 'Wiper blades', km: 0, months: 12, icon: '🌧️', fuel: false, why: 'Streaking blades are unsafe in rain.' },
-    { name: 'LTO registration', km: 0, months: 12, icon: '📄', fuel: false, why: 'Avoid fines and apprehension.' },
-    { name: 'Insurance renewal', km: 0, months: 12, icon: '🛡️', fuel: false, why: 'Stay covered.' },
+    { name: 'LTO registration + insurance', km: 0, months: 12, icon: '📄', fuel: false, lto: true, why: 'Renew in your plate\'s month and week; CTPL insurance is bought with it. Late renewal means penalties.' },
   ];
   // Car systems — parts and records are grouped by these
   const GROUPS = [
@@ -65,7 +64,7 @@ window.UpkeepCar = function (api) {
     'transmission fluid': 'fluids', 'power steering fluid': 'fluids', 'coolant flush': 'fluids',
     'battery check': 'electrical', 'battery replacement': 'electrical',
     'cabin / aircon filter': 'aircon', 'aircon cleaning': 'aircon', 'aircon refrigerant check': 'aircon',
-    'shock absorbers': 'suspension', 'wiper blades': 'body', 'lto registration': 'papers', 'insurance renewal': 'papers',
+    'shock absorbers': 'suspension', 'wiper blades': 'body', 'lto registration': 'papers', 'insurance renewal': 'papers', 'lto registration + insurance': 'papers',
   };
   const GROUP_RE = [[/air ?con|a\/c|\bac\b|compressor|condenser|evaporator|freon|refrigerant|blower/i, 'aircon'], [/tire|tyre|wheel|rim|align/i, 'tires'],
     [/brake|caliper|rotor|disc/i, 'brakes'], [/battery|alternator|starter|light|bulb|fuse|wiring/i, 'electrical'], [/coolant|radiator|fluid|thermostat|water pump/i, 'fluids'],
@@ -84,7 +83,7 @@ window.UpkeepCar = function (api) {
     brake: [['low', 'Below MIN'], ['ok', 'Between MIN–MAX'], ['max', 'At MAX']],
   };
   const LOW = ['low'];
-  const STARTER = ['Change oil', 'Oil filter', 'PMS (preventive maintenance)', 'Tire pressure check', 'Engine oil level check', 'Coolant level check', 'Tire rotation', 'Wheel alignment', 'Tire replacement', 'Air filter', 'Spark plugs', 'Brake pads', 'Brake fluid', 'Drive / fan belt', 'Battery replacement', 'Coolant flush', 'LTO registration', 'Insurance renewal'];
+  const STARTER = ['Change oil', 'Oil filter', 'PMS (preventive maintenance)', 'Tire pressure check', 'Engine oil level check', 'Coolant level check', 'Tire rotation', 'Wheel alignment', 'Tire replacement', 'Air filter', 'Spark plugs', 'Brake pads', 'Brake fluid', 'Drive / fan belt', 'Battery replacement', 'Coolant flush', 'LTO registration + insurance'];
   const FUEL_RE = /oil|tire|tyre|align|air filter|spark|o2|oxygen|fuel filter|throttle|belt|transmission|battery|aircon|pms/i;
   const tplFor = (item) => TEMPLATES.find((t) => t.name.toLowerCase() === String(item.name).toLowerCase());
   const affectsFuel = (item) => (item.fuel != null ? item.fuel : tplFor(item) ? tplFor(item).fuel : FUEL_RE.test(item.name));
@@ -136,7 +135,65 @@ window.UpkeepCar = function (api) {
   }
 
   // ---------- Due logic: whichever comes first, km or months ----------
+
+  // ================= LTO registration schedule (Philippines) =================
+  // Last digit of the plate = month (1 Jan … 9 Sep, 0 Oct). Second-to-last digit = week:
+  // 1–3 → days 1–7, 4–6 → 8–14, 7–8 → 15–21, 9–0 → 22–end of month. You may renew up to a month early.
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function ltoRule(plate) {
+    const d = String(plate || '').replace(/\D/g, '');
+    if (d.length < 2) return null;
+    const last = +d[d.length - 1], prev = +d[d.length - 2];
+    const month = last === 0 ? 10 : last; // 1–10
+    const days = [1, 2, 3].includes(prev) ? [1, 7] : [4, 5, 6].includes(prev) ? [8, 14] : [7, 8].includes(prev) ? [15, 21] : [22, 31];
+    return { month, days, ending: d.slice(-2) };
+  }
+  function ltoWindow(rule, year) {
+    const lastDay = new Date(year, rule.month, 0).getDate();
+    const start = new Date(year, rule.month - 1, rule.days[0]).getTime();
+    const end = new Date(year, rule.month - 1, Math.min(rule.days[1], lastDay), 23, 59).getTime();
+    const openFrom = new Date(year, rule.month - 2, 1).getTime(); // one month early
+    return { year, start, end, openFrom, text: `${MONTHS[rule.month - 1].slice(0, 3)} ${rule.days[0]}–${Math.min(rule.days[1], lastDay)}, ${year}` };
+  }
+  const ruleText = (rule) => rule ? `Plate ending ${rule.ending}: ${MONTHS[rule.month - 1]}, days ${rule.days[0]}–${rule.days[1] === 31 ? 'end of month' : rule.days[1]}` : 'Add your plate number to get your exact renewal week';
+  // Next renewal window after your last registration (or the year you set for a 3-year new-car registration)
+  function nextLto(c, item) {
+    const rule = ltoRule(c.plate);
+    if (!rule) return null;
+    if (item.validYear) return ltoWindow(rule, item.validYear);
+    const y0 = new Date(item.lastDate || Date.now()).getFullYear();
+    for (let y = y0; y <= y0 + 4; y++) { const w = ltoWindow(rule, y); if (w.end > (item.lastDate || 0) + 60 * DAY) return w; }
+    return ltoWindow(rule, y0 + 1);
+  }
+  const isLto = (item) => !!item.lto;
+  // One combined item: older "LTO registration" + "Insurance renewal" items are merged automatically
+  function migrateLto() {
+    const d = data();
+    d.cars.forEach((c) => {
+      const its = itemsOf(c);
+      const lto = its.filter((i) => i.lto || /lto|registration/i.test(i.name));
+      const ins = its.filter((i) => !i.lto && /insurance/i.test(i.name));
+      if (!lto.length && !ins.length) return;
+      if (lto.length === 1 && lto[0].lto && !ins.length) return;
+      const keep = lto[0] || ins[0];
+      const all = lto.concat(ins);
+      Object.assign(keep, { name: 'LTO registration + insurance', lto: true, icon: '📄', km: 0, months: 12, group: 'papers', lastDate: Math.max(...all.map((i) => i.lastDate || 0)) || Date.now() });
+      const drop = new Set(all.filter((i) => i !== keep).map((i) => i.id));
+      d.history.forEach((h) => { if (drop.has(h.itemId)) h.itemId = keep.id; });
+      d.items = d.items.filter((i) => !drop.has(i.id));
+    });
+  }
+
   function dueInfo(item, c) {
+    if (isLto(item)) {
+      const now = Date.now(), w = nextLto(c, item);
+      if (w) {
+        const out = { lto: w, dueAt: w.end, effectiveAt: w.end, dueKm: null, kmLeft: null, byKmEstimate: null, daysLeft: Math.ceil((w.end - now) / DAY), status: 'ok' };
+        if (now > w.end) out.status = 'overdue';
+        else if (now >= w.openFrom || out.daysLeft <= (item.remindDays || 7)) out.status = 'soon';
+        return out;
+      }
+    }
     const now = Date.now();
     const km = currentKm(c);
     const rate = kmPerDay(c);
@@ -157,6 +214,7 @@ window.UpkeepCar = function (api) {
   }
   // How "used up" an item is: the larger of km used / km interval and time used / month interval
   function wear(item, c) {
+    if (isLto(item)) { const w = nextLto(c, item); if (w) return Math.max(0, 1 - (w.end - Date.now()) / (365 * DAY)); }
     const kmPct = item.km ? (currentKm(c) - (item.lastKm || 0)) / item.km : 0;
     const timePct = item.months ? (Date.now() - item.lastDate) / (item.months * 30.44 * DAY) : 0;
     return Math.max(0, kmPct, timePct);
@@ -165,6 +223,13 @@ window.UpkeepCar = function (api) {
   const statusMap = (c) => Object.fromEntries(itemsOf(c).map((i) => [i.id, dueInfo(i, c).status]));
 
   function dueText(info) {
+    if (info.lto) {
+      const w = info.lto, now = Date.now();
+      if (info.status === 'overdue') return `Overdue · deadline was ${fmtDate(w.end)} — renew now`;
+      if (now >= w.start) return `Renew this week · deadline ${fmtDate(w.end)}`;
+      if (now >= w.openFrom) return `Renewal open now · your week ${w.text}`;
+      return `Renew ${w.text} · in ${info.daysLeft} days`;
+    }
     const parts = [];
     if (info.status === 'overdue') {
       if (info.kmLeft != null && info.kmLeft <= 0) parts.push(`${fmtKm(-info.kmLeft)} overdue`);
@@ -178,11 +243,25 @@ window.UpkeepCar = function (api) {
 
   // ---------- Notifications ----------
   function buildNotifications(now, CH) {
+    migrateLto();
     const out = [];
     let n = 0;
     data().cars.forEach((c) => {
       itemsOf(c).forEach((item) => {
         const info = dueInfo(item, c);
+        if (info.lto) {
+          const w = info.lto, at9l = (t) => { const d = new Date(t); d.setHours(9, 0, 0, 0); return d.getTime(); };
+          const ex = { kind: 'car', itemId: item.id };
+          const plan = [
+            [w.openFrom, `📄 LTO renewal is open: ${c.name}`, `Your week is ${w.text}. Renew early to skip the rush — CTPL insurance too.`],
+            [w.start - 3 * DAY, `📄 LTO renewal week starts soon`, `${c.name}: ${w.text}. Prepare OR/CR, CTPL insurance and emission test.`],
+            [w.start, `📄 LTO renewal week: ${c.name}`, `Deadline ${fmtDate(w.end)}. Tap Done after renewing to log it.`],
+            [w.end - DAY, `⚠ LTO deadline tomorrow: ${c.name}`, `Last day is ${fmtDate(w.end)} — late registration has penalties.`],
+          ];
+          plan.forEach(([t, title, body]) => { const at = at9l(t); if (at > now) out.push({ id: ID_BASE + n++, title, body, channelId: CH, actionTypeId: 'CAR', extra: ex, at }); });
+          if (info.status === 'overdue') { let t = at9l(now); if (t <= now) t += DAY; for (let k = 0; k < 4; k++, t += 3 * DAY) out.push({ id: ID_BASE + n++, title: `Overdue: LTO registration — ${c.name}`, body: `Deadline was ${fmtDate(w.end)}. Renew as soon as possible.`, channelId: CH, actionTypeId: 'CAR', extra: ex, at: t }); }
+          return;
+        }
         if (info.effectiveAt == null && info.status !== 'overdue') return;
         const at9 = (t) => { const d = new Date(t); d.setHours(9, 0, 0, 0); return d.getTime(); };
         const extra = { kind: 'car', itemId: item.id };
@@ -275,6 +354,7 @@ window.UpkeepCar = function (api) {
   const closedGroups = new Set(); // systems you collapsed
   function render() {
     const el = $('carRoot'); if (!el) return;
+    migrateLto();
     const d = data(); const c = car();
     if (!c) {
       el.innerHTML = `
@@ -384,6 +464,7 @@ window.UpkeepCar = function (api) {
       <div class="form">
         <label>Name<input id="cfName" placeholder="e.g. Toyota Vios 2019" value="${esc(c ? c.name : '')}" /></label>
         <label>Plate number<input id="cfPlate" placeholder="e.g. ABC 1234" value="${esc(c ? c.plate : '')}" /></label>
+        <p class="muted small" id="cfLto" style="margin:-4px 0 0">${ruleText(ltoRule(c ? c.plate : ''))}</p>
         ${isNew ? '<label>Current odometer (km)<input id="cfKm" type="number" inputmode="numeric" placeholder="e.g. 45200" /></label>' : ''}
       </div>
       <div class="sheet-btns">
@@ -392,6 +473,7 @@ window.UpkeepCar = function (api) {
         <button class="btn ghost" id="cfCancel">Cancel</button>
       </div>`, () => {
       $('cfCancel').onclick = closeSheet;
+      $('cfPlate').oninput = () => { $('cfLto').textContent = ruleText(ltoRule($('cfPlate').value)); };
       $('cfSave').onclick = async () => {
         const name = $('cfName').value.trim();
         if (!name) { toast('Add a name for the car'); return; }
@@ -577,7 +659,13 @@ window.UpkeepCar = function (api) {
       <div class="sheet-icon">${item.icon || '🔧'}</div><h2>${esc(item.name)}</h2>
       <p class="muted">${dueText(info)}</p>
       ${whyFor(item) ? `<p class="small">${affectsFuel(item) ? '⛽ ' : ''}${esc(whyFor(item))}</p>` : ''}
-      <p class="small">Every ${[item.km ? fmtKm(item.km) : '', item.months ? item.months + ' months' : ''].filter(Boolean).join(' or ')} · last done ${fmtDate(item.lastDate)}${item.lastKm ? ' at ' + fmtKm(item.lastKm) : ''}</p>
+      ${isLto(item) ? (() => {
+        const rule = ltoRule(c.plate), w = nextLto(c, item), y0 = new Date().getFullYear();
+        return `<p class="small"><b>${ruleText(rule)}</b>${rule ? '' : ` <button class="linkbtn" id="ltoPlate" style="display:inline;margin:0">Add plate</button>`}</p>
+          ${w ? `<p class="small">Next renewal: <b>${w.text}</b> · window opens ${fmtDate(w.openFrom)}</p>` : ''}
+          <p class="small muted">Last registered ${fmtDate(item.lastDate)}</p>
+          ${rule ? `<div class="form"><label>Registration valid until<select id="ltoYear"><option value="">Auto (yearly)</option>${[0, 1, 2, 3].map((k) => `<option value="${y0 + k}" ${item.validYear === y0 + k ? 'selected' : ''}>${y0 + k}${k === 3 ? ' (new car, 3 years)' : ''}</option>`).join('')}</select></label></div>` : ''}`;
+      })() : `<p class="small">Every ${[item.km ? fmtKm(item.km) : '', item.months ? item.months + ' months' : ''].filter(Boolean).join(' or ')} · last done ${fmtDate(item.lastDate)}${item.lastKm ? ' at ' + fmtKm(item.lastKm) : ''}</p>`}
       ${checkKind(item) ? (() => {
         const hx = checksOf(c, item.id).slice(0, 6); const rate = checkKind(item) !== 'tire' ? topUpRate(c, item.id) : null;
         return `${rate != null ? `<p class="small">Topping up about <b>${rate >= 1000 ? (rate / 1000).toFixed(2) + ' L' : Math.round(rate) + ' ml'}</b> per 1,000 km${checkKind(item) === 'oil' && rate > 500 ? ' — <span class="miss">high, have the engine checked</span>' : ''}</p>` : ''}
@@ -594,6 +682,8 @@ window.UpkeepCar = function (api) {
       $('mdEdit').onclick = () => itemForm(c, item);
       $('mdDone').onclick = () => recordForm(c, { item });
       if ($('mdCheck')) $('mdCheck').onclick = () => checkForm(c, item);
+      if ($('ltoPlate')) $('ltoPlate').onclick = () => carForm(c);
+      if ($('ltoYear')) $('ltoYear').onchange = async () => { item.validYear = Number($('ltoYear').value) || null; await commit('Renewal year saved'); itemSheet(item.id); };
       body.querySelectorAll('[data-rec]').forEach((r) => { r.onclick = () => recordSheet(r.dataset.rec); });
     });
   }
@@ -1072,7 +1162,8 @@ window.UpkeepCar = function (api) {
     const its = itemsOf(c);
     const r = rec ? JSON.parse(JSON.stringify(rec)) : {
       group: item ? groupOf(item) : 'other', name: item ? item.name : '', itemId: item ? item.id : '', t: Date.now(), km: currentKm(c) || '',
-      parts: [{ name: '', cost: '' }], labor: '', shop: '', notes: '', receipts: [], warranty: null,
+      parts: item && isLto(item) ? [{ name: 'LTO registration fee', cost: '' }, { name: 'CTPL insurance', cost: '' }, { name: 'Emission test', cost: '' }] : [{ name: '', cost: '' }],
+      labor: '', shop: '', notes: '', receipts: [], warranty: null,
     };
     if (!r.parts || !r.parts.length) r.parts = [{ name: rec && !rec.parts ? rec.name : '', cost: rec && !rec.parts ? rec.cost || '' : '' }];
     let wMonths = r.warranty ? r.warranty.months || 0 : 0;
@@ -1145,7 +1236,7 @@ window.UpkeepCar = function (api) {
         };
         const before = statusMap(c), prevKm = currentKm(c);
         if (km > currentKm(c)) addOdo(c, km, isoDay(r.t) === isoDay(Date.now()) ? Date.now() : Math.min(r.t, Date.now()));
-        if (it && (!it.lastDate || r.t >= it.lastDate - DAY)) { it.lastDate = r.t; it.lastKm = km || currentKm(c); }
+        if (it && (!it.lastDate || r.t >= it.lastDate - DAY)) { it.lastDate = r.t; it.lastKm = km || currentKm(c); if (isLto(it)) it.validYear = null; }
         if (rec) {
           (rec.receipts || []).filter((x) => !out.receipts.some((y) => y.id === x.id)).forEach((x) => deleteReceipt(x.id));
           Object.assign(rec, out);

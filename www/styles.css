@@ -159,7 +159,7 @@ body.on-today .workbar { display: flex; }
 @media (max-width: 360px) { .ringbox { width: 96px; height: 96px; } .ring-big { font-size: 18px; } .wb-btns .btn { padding: 9px 9px; font-size: 13px; } }
 
 .view.active.today { display: grid; grid-template-rows: 1fr 1fr; gap: 12px;
-  height: calc(100dvh - 192px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 470px; }
+  height: calc(100dvh - 196px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 470px; }
 .today .half { min-height: 0; }
 .today .half-stats .stat-main .stat-line { font-weight: 400; margin-top: 3px; }
 .chip-s { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; vertical-align: 2px; margin-left: 4px; }
@@ -172,3 +172,11 @@ body.on-today .workbar { display: flex; }
 
 .logo-mark { width: 30px; height: 30px; flex: none; filter: drop-shadow(0 2px 6px rgba(245,158,11,.25)); }
 .wordmark { font-weight: 800; letter-spacing: -.2px; }
+@media (max-height: 700px) {
+  .view.active.today { min-height: 400px; gap: 10px; }
+  .today .half { padding: 12px 14px; }
+  .ringbox { width: 84px; height: 84px; }
+  .ring-big { font-size: 17px; }
+  .today .btn { padding: 12px 10px; font-size: 16px; }
+  .half-body { padding: 4px 0; gap: 12px; }
+}

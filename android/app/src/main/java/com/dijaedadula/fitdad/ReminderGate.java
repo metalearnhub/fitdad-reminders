@@ -148,6 +148,13 @@ public class ReminderGate extends BroadcastReceiver {
     static boolean stillNeeded(JSONObject root, JSONObject it) throws Exception {
         String kind = it.optString("kind");
         if ("test".equals(kind)) return true;
+        // feature switched off in Settings → never ring for it
+        JSONObject feats = root.optJSONObject("settings") != null ? root.optJSONObject("settings").optJSONObject("features") : null;
+        if (feats != null) {
+            if (("water".equals(kind) || "check".equals(kind)) && !feats.optBoolean("water", true)) return false;
+            if (("stand".equals(kind) || "nudge".equals(kind)) && !feats.optBoolean("stand", true)) return false;
+            if (kind.startsWith("car") && !feats.optBoolean("car", true)) return false;
+        }
         JSONObject r = FitDadWidget.today(root);
         String status = r.optString("status", "idle");
         JSONArray log = r.optJSONArray("log");

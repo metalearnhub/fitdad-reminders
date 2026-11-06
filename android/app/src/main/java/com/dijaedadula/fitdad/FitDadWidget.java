@@ -258,9 +258,14 @@ public class FitDadWidget extends AppWidgetProvider {
             v.setTextViewText(R.id.w_stands, String.valueOf(stands));
             v.setTextViewText(R.id.w_btn_water, "+ " + glass + " ml");
 
+            JSONObject fs = root.optJSONObject("settings") != null ? root.optJSONObject("settings").optJSONObject("features") : null;
+            boolean fWater = fs == null || fs.optBoolean("water", true), fStand = fs == null || fs.optBoolean("stand", true);
+            int G = android.view.View.GONE, V = android.view.View.VISIBLE;
+            for (int vid : new int[] { R.id.w_water_block, R.id.w_progress, R.id.w_btn_water }) v.setViewVisibility(vid, fWater ? V : G);
+            for (int vid : new int[] { R.id.w_stand_block, R.id.w_btn_stand, R.id.w_btn_main }) v.setViewVisibility(vid, fStand ? V : G);
             long lastStand = lastOf(r, "stand"), lastWater = lastOf(r, "water");
-            agoTimer(v, R.id.w_ago_stand, lastStand, "🧍");
-            agoTimer(v, R.id.w_ago_water, lastWater, "💧");
+            agoTimer(v, R.id.w_ago_stand, fStand ? lastStand : 0, "🧍");
+            agoTimer(v, R.id.w_ago_water, fWater ? lastWater : 0, "💧");
             v.setViewVisibility(R.id.w_ago_none, lastStand == 0 && lastWater == 0 ? android.view.View.VISIBLE : android.view.View.GONE);
             String week = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_WEEK, null);
             v.setTextViewText(R.id.w_week, week != null ? week : "Week stats appear after you use the app");

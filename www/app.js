@@ -39,6 +39,7 @@
 
   // ---------- Defaults ----------
   const DEFAULTS = {
+    features: { water: true, stand: true, car: true }, // which parts of Upkeep are on
     standEvery: 30,       // minutes
     waterEvery: 60,       // minutes (used when waterMode = 'fixed')
     waterMode: 'auto',    // 'auto' = spread remaining glasses from now until bedtime; 'fixed' = every N minutes
@@ -56,6 +57,7 @@
   };
 
   let settings = { ...DEFAULTS };
+  const feats = () => ({ water: true, stand: true, car: true, ...(settings.features || {}) });
   const extraData = { car: null }; // other modules' data (car care), saved alongside
   let Car = null;
   let days = {}; // { 'YYYY-MM-DD': { status, startedAt, pausedAt, pausedMs, water, stands } }
@@ -244,6 +246,38 @@
   function closeSheet() { $('sheet').classList.remove('show'); }
 
   // ---------- Deep links from the home-screen widget ----------
+  // Show only the tabs, Today halves and settings that belong to the features you turned on
+  function applyFeatures() {
+    const F = feats();
+    const b = document.body.classList;
+    b.toggle('no-water', !F.water); b.toggle('no-stand', !F.stand); b.toggle('no-car', !F.car);
+    b.toggle('one-half', F.water !== F.stand);
+    b.toggle('no-health', !F.water && !F.stand);
+    const tabOn = { today: true, stats: F.water || F.stand, car: F.car, settings: true };
+    document.querySelectorAll('.tab').forEach((t) => { t.hidden = !tabOn[t.dataset.view]; });
+    const active = document.querySelector('.tab.active');
+    if (active && active.hidden) showTab('today');
+    renderTodayCar();
+  }
+  // Car-only mode: Today shows a car summary instead of the water/stand halves
+  function renderTodayCar() {
+    const el = $('todayCar'); if (!el) return;
+    const F = feats();
+    if (F.water || F.stand) { el.hidden = true; return; }
+    el.hidden = false;
+    if (!F.car) { el.innerHTML = '<h2>Nothing turned on</h2><p class="muted">Turn on Water, Stand-ups or Car in Settings → Features.</p><button class="btn primary full" id="tcSettings">Open Settings</button>'; $('tcSettings').onclick = () => showTab('settings'); return; }
+    const cs = Car && Car.summary();
+    el.innerHTML = cs
+      ? `<h2>🚗 ${cs.car}</h2><p class="${cs.overdue ? 'miss' : 'muted'}">${cs.overdue || cs.soon ? `${cs.overdue} overdue · ${cs.soon} due soon` : 'All parts OK'}</p>
+         ${cs.names.length ? `<p class="small">${cs.names.slice(0, 5).join(', ')}</p>` : ''}
+         <div class="btn-row"><button class="btn ghost" id="tcOdo">Update km</button><button class="btn water" id="tcFuel">⛽ Log fill-up</button></div>
+         <button class="btn ghost full" id="tcOpen" style="margin-top:10px">Open Car</button>`
+      : '<h2>🚗 Car care</h2><p class="muted">Add your car to track maintenance and fuel.</p><button class="btn primary full" id="tcOpen">Add your car</button>';
+    $('tcOpen').onclick = () => showTab('car');
+    if ($('tcOdo')) $('tcOdo').onclick = () => { showTab('car'); Car.openOdo(); };
+    if ($('tcFuel')) $('tcFuel').onclick = () => { showTab('car'); Car.openFuel(); };
+  }
+
   function showTab(name) {
     document.body.classList.toggle('on-today', name === 'today');
     document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.view === name));
@@ -518,7 +552,14 @@
         });
       }
     }
-    return out;
+    const F = feats();
+    return out.filter((x) => {
+      const k = x.extra.kind;
+      if (k === 'water' || k === 'check') return F.water;
+      if (k === 'stand' || k === 'nudge') return F.stand;
+      if (String(k).startsWith('car')) return F.car;
+      return true;
+    });
   }
 
   async function reschedule() {
@@ -676,13 +717,13 @@
     const pctStand = t.expected ? Math.round(100 * Math.min(1, t.stands / t.expected)) : null;
     $('statToday').innerHTML = `
       <div class="kpis">
-        <div class="kpi"><div class="kv water-c">${liters(tw.water)}</div><div class="kl">of ${liters(settings.waterGoal)} · ${tw.glasses} glasses</div></div>
-        <div class="kpi"><div class="kv stand-c">${t.stands}${t.expected ? '/' + t.expected : ''}</div><div class="kl">stand-ups${pctStand !== null ? ' · ' + pctStand + '%' : ''}</div></div>
-        <div class="kpi"><div class="kv">${t.workMs ? fmtDur(t.longest) : '—'}</div><div class="kl">longest sitting stretch</div></div>
-        <div class="kpi"><div class="kv">${t.workMs ? fmtDur(t.workMs) : '—'}</div><div class="kl">work time tracked</div></div>
+        <div class="kpi w-only"><div class="kv water-c">${liters(tw.water)}</div><div class="kl">of ${liters(settings.waterGoal)} · ${tw.glasses} glasses</div></div>
+        <div class="kpi s-only"><div class="kv stand-c">${t.stands}${t.expected ? '/' + t.expected : ''}</div><div class="kl">stand-ups${pctStand !== null ? ' · ' + pctStand + '%' : ''}</div></div>
+        <div class="kpi s-only"><div class="kv">${t.workMs ? fmtDur(t.longest) : '—'}</div><div class="kl">longest sitting stretch</div></div>
+        <div class="kpi s-only"><div class="kv">${t.workMs ? fmtDur(t.workMs) : '—'}</div><div class="kl">work time tracked</div></div>
       </div>
       <p class="small">Reminders answered: <b>${t.answered}/${t.reminders}</b>${t.missed ? ` · <span class="miss">${t.missed} missed</span>` : ''}</p>
-      ${workSessionsHTML()}
+      <div class="s-only">${workSessionsHTML()}</div>
       <p class="muted small">${t.fromNotif + tw.log.filter((e) => e.k === 'water' && e.src === 'notif' && tw.key !== t.key).length} confirmed from notifications · ${t.snoozes + (tw.key !== t.key ? tw.snoozes : 0)} snoozed · ${t.skips + (tw.key !== t.key ? tw.skips : 0)} skipped</p>`;
     const names = { dayoff: '🏖 Day off', endwork: '✅ Done working', water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
     const evs = (tw.key === t.key ? t.log : tw.log.concat(t.log)).slice().sort((a, b) => b.t - a.t).slice(0, 30);
@@ -695,15 +736,15 @@
     const hasPrev = prev.some((x) => x.s.water || x.s.stands);
     $('statWeek').innerHTML = `
       <div class="kpis">
-        <div class="kpi"><div class="kv water-c">${liters(a.avgWater)}</div><div class="kl">avg water / day</div>${hasPrev ? delta(a.avgWater / 1000, b.avgWater / 1000, ' L', 2) : ''}</div>
-        <div class="kpi"><div class="kv">${a.goalDays}/7</div><div class="kl">days goal met · streak ${streak()}</div>${hasPrev ? delta(a.goalDays, b.goalDays, ' days') : ''}</div>
-        <div class="kpi"><div class="kv stand-c">${a.stands}${a.expected ? '/' + a.expected : ''}</div><div class="kl">stand-ups${a.expected ? ' · ' + Math.round(100 * Math.min(1, a.stands / a.expected)) + '%' : ''}</div>${hasPrev ? delta(a.stands, b.stands, '') : ''}</div>
-        <div class="kpi"><div class="kv">${a.avgLongest ? fmtDur(a.avgLongest) : '—'}</div><div class="kl">avg longest sit</div></div>
+        <div class="kpi w-only"><div class="kv water-c">${liters(a.avgWater)}</div><div class="kl">avg water / day</div>${hasPrev ? delta(a.avgWater / 1000, b.avgWater / 1000, ' L', 2) : ''}</div>
+        <div class="kpi w-only"><div class="kv">${a.goalDays}/7</div><div class="kl">days goal met · streak ${streak()}</div>${hasPrev ? delta(a.goalDays, b.goalDays, ' days') : ''}</div>
+        <div class="kpi s-only"><div class="kv stand-c">${a.stands}${a.expected ? '/' + a.expected : ''}</div><div class="kl">stand-ups${a.expected ? ' · ' + Math.round(100 * Math.min(1, a.stands / a.expected)) + '%' : ''}</div>${hasPrev ? delta(a.stands, b.stands, '') : ''}</div>
+        <div class="kpi s-only"><div class="kv">${a.avgLongest ? fmtDur(a.avgLongest) : '—'}</div><div class="kl">avg longest sit</div></div>
       </div>
-      <h3>Water (L) — dashed line = goal</h3>
-      ${bars(wk, (s) => s.water / 1000, settings.waterGoal / 1000, 'var(--water)', (v) => v.toFixed(1))}
-      <h3>Stand-ups</h3>
-      ${bars(wk, (s) => s.stands, 0, 'var(--stand)', (v) => v)}
+      <div class="w-only"><h3>Water (L) — dashed line = goal</h3>
+      ${bars(wk, (s) => s.water / 1000, settings.waterGoal / 1000, 'var(--water)', (v) => v.toFixed(1))}</div>
+      <div class="s-only"><h3>Stand-ups</h3>
+      ${bars(wk, (s) => s.stands, 0, 'var(--stand)', (v) => v)}</div>
       <p class="small">Reminders answered this week: <b>${a.reminders ? Math.round(100 * a.answered / a.reminders) + '%' : '—'}</b> (${a.answered}/${a.reminders})${a.missed ? ` · <span class="miss">${a.missed} missed</span>` : ''}</p>
       <p class="muted small">Work time this week: ${fmtDur(a.work)} · snoozes ${a.snoozes} · skips ${a.skips}</p>`;
   }
@@ -795,10 +836,11 @@
       : t.status === 'ended' ? `Done for today · longest sit ${fmtDur(st.longest)}`
       : 'Not working — reminders off';
     if ($('view-stats').classList.contains('active')) renderStats();
+    applyFeatures();
     // car parts needing attention, shown on Today
     const cs = Car && Car.summary();
     const ca = $('carAlert');
-    if (cs && (cs.overdue || cs.soon)) {
+    if (cs && feats().car && (cs.overdue || cs.soon)) {
       ca.hidden = false;
       ca.className = 'car-badge' + (cs.overdue ? ' overdue' : '');
       ca.textContent = `🚗 ${cs.overdue ? cs.overdue + ' overdue' : cs.soon + ' due soon'}`;
@@ -817,6 +859,7 @@
     $('s-nudgeRepeat').value = settings.nudgeRepeat;
     $('s-nudgeMax').value = settings.nudgeMax;
     $('s-checkTime').value = settings.checkTime;
+    const F = feats(); ['water', 'stand', 'car'].forEach((k) => { $('f-' + k).checked = F[k]; });
     followDraft = { f: settings.followUp, r: settings.followUpRepeats };
     renderFollow();
     bedDraft = null;
@@ -1027,6 +1070,17 @@
     $('s-waterMode-auto').onclick = () => { modeDraft = 'auto'; renderWaterPlanner(); };
     $('s-waterMode-fixed').onclick = () => { modeDraft = 'fixed'; renderWaterPlanner(); };
     $('bedEdit').onclick = openBedSheet;
+    // Feature toggles save and apply immediately
+    ['water', 'stand', 'car'].forEach((k) => {
+      $('f-' + k).onchange = async () => {
+        settings.features = { ...feats(), [k]: $('f-' + k).checked };
+        if (k === 'stand' && !settings.features.stand && ['active', 'paused'].includes(today().status)) {
+          const t = today(); closeSegment(t, Date.now()); t.status = 'ended'; t.pausedAt = null; logEvent(t, 'endwork', 'app');
+        }
+        await save(); render(); applyFeatures(); await reschedule();
+        toast(`${{ water: 'Water', stand: 'Stand-ups', car: 'Car' }[k]} ${settings.features[k] ? 'on' : 'off'}`);
+      };
+    });
     ['s-waterGoal', 's-glass', 's-waterEvery'].forEach((id) => { $(id).oninput = renderWaterPlanner; });
   }
 

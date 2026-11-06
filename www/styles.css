@@ -246,3 +246,29 @@ body.on-today .workbar { display: flex; }
   color: var(--amber); font-weight: 700; font-size: 12px; border-radius: 999px; padding: 5px 10px; }
 .car-badge.overdue { border-color: rgba(248,113,113,.5); background: rgba(248,113,113,.12); color: var(--danger); }
 .car-badge[hidden] { display: none; }
+
+/* ===== Feature toggles ===== */
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.toggle:first-of-type { border-top: 0; }
+.toggle span { display: flex; flex-direction: column; font-weight: 700; font-size: 15px; }
+.toggle small { font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle i { flex: none; width: 46px; height: 28px; border-radius: 999px; background: var(--line); position: relative; transition: background .2s; }
+.toggle i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.toggle input:checked + i { background: var(--stand); }
+.toggle input:checked + i::after { transform: translateX(18px); }
+body.no-water .w-only, body.no-water .water-half { display: none !important; }
+body.no-stand .s-only, body.no-stand .stand-half, body.no-stand .workbar { display: none !important; }
+body.one-half .view.active.today { grid-template-rows: 1fr; }
+body.on-today.no-stand { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+body.no-stand .view.active.today { height: calc(100dvh - 132px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+body.no-health .view.active.today { display: block; height: auto; min-height: 0; }
+.tab[hidden] { display: none; }
+.today-car h2 { margin-top: 0; }
+body.one-half .today .half-body { flex-direction: column; justify-content: center; text-align: center; gap: 18px; }
+body.one-half .today .ringbox { width: 190px; height: 190px; }
+body.one-half .today .ring-big { font-size: 34px; }
+body.one-half .today .ring-sub { font-size: 13px; }
+body.one-half .today .half-stats { align-items: center; gap: 7px; }
+body.one-half .today .stat-main { font-size: 18px; }
+body.one-half .today .linkbtn.left { text-align: center; }

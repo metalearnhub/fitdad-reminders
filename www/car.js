@@ -834,5 +834,7 @@ window.UpkeepCar = function (api) {
     return { car: c.name, overdue: its.filter((x) => x.status === 'overdue').length, soon: its.filter((x) => x.status === 'soon').length, names: named.sort((a, b) => (a.status === 'overdue' ? -1 : 1)).map((x) => x.name) };
   }
 
-  return { render, buildNotifications, handleAction, summary, data, isSheetOpen: () => !!sheetOpen };
+  const openOdo = () => { const c = car(); if (c) odoSheet(c); };
+  const openFuel = () => { const c = car(); if (c) { view = 'fuel'; render(); fuelForm(c); } };
+  return { render, buildNotifications, handleAction, summary, data, openOdo, openFuel, isSheetOpen: () => !!sheetOpen };
 };

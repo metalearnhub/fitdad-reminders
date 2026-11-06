@@ -24,6 +24,8 @@
   <main>
     <!-- TODAY -->
     <section class="view active today" id="view-today">
+      <div class="card today-car" id="todayCar" hidden></div>
+
       <!-- WATER — top half -->
       <div class="card half water-half">
         <div class="half-head">
@@ -81,6 +83,14 @@
     <!-- SETTINGS -->
     <section class="view" id="view-settings">
       <div class="card">
+        <h2>Features</h2>
+        <p class="muted small">Use Upkeep your way. Turning a feature off hides it and stops its reminders — your data is kept.</p>
+        <label class="toggle"><span>💧 Water<small>Glasses, water plan and reminders</small></span><input type="checkbox" id="f-water" /><i></i></label>
+        <label class="toggle"><span>🧍 Stand-ups<small>Work sessions, stand-up reminders, morning nudge</small></span><input type="checkbox" id="f-stand" /><i></i></label>
+        <label class="toggle"><span>🚗 Car<small>Maintenance, fuel efficiency, Car tab</small></span><input type="checkbox" id="f-car" /><i></i></label>
+      </div>
+
+      <div class="card w-only">
         <h2>Water plan 💧</h2>
         <p class="muted small">Pick a template or set your own goal and glass size. Upkeep works out how many glasses and when.</p>
         <div class="chips" id="s-templates"></div>
@@ -101,7 +111,7 @@
         <p class="plan" id="s-waterPreview"></p>
       </div>
 
-      <div class="card">
+      <div class="card s-only">
         <h2>Stand-ups</h2>
         <label class="field"><span>Stand up every (minutes)</span>
           <input type="number" id="s-standEvery" min="10" max="180" step="5" /></label>
@@ -116,7 +126,7 @@
         <p class="muted small" id="s-followHint"></p>
       </div>
 
-      <div class="card">
+      <div class="card s-only">
         <h2>Morning nudge</h2>
         <p class="muted small">If you haven't tapped Start by this time, Upkeep nudges you and keeps asking until you answer.</p>
         <label class="field"><span>First nudge at</span>

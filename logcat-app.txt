@@ -1,0 +1,18 @@
+11-06 17:36:51.207  6151  6151 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-06 17:36:51.211  6151  6151 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-06 17:36:51.218  6151  6151 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 105285837, pluginId: LocalNotifications, methodName: getPending
+11-06 17:36:51.218  6151  6151 V Capacitor: callback: 105285837, pluginId: LocalNotifications, methodName: getPending, methodData: {}
+11-06 17:36:51.221  6151  6151 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 105285838, pluginId: LocalNotifications, methodName: getDeliveredNotifications
+11-06 17:36:51.221  6151  6151 V Capacitor: callback: 105285838, pluginId: LocalNotifications, methodName: getDeliveredNotifications, methodData: {}
+11-06 17:49:51.115  6151  6151 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-06 17:49:51.118  6151  6151 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-06 17:49:51.121  6151  6151 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 105285844, pluginId: LocalNotifications, methodName: getPending
+11-06 17:49:51.121  6151  6151 V Capacitor: callback: 105285844, pluginId: LocalNotifications, methodName: getPending, methodData: {}
+11-06 17:49:51.127  6151  6151 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 105285845, pluginId: LocalNotifications, methodName: getDeliveredNotifications
+11-06 17:49:51.127  6151  6151 V Capacitor: callback: 105285845, pluginId: LocalNotifications, methodName: getDeliveredNotifications, methodData: {}
+11-06 18:00:51.218  6151  6151 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-06 18:00:51.226  6151  6151 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-06 18:00:51.234  6151  6151 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 105285851, pluginId: LocalNotifications, methodName: getPending
+11-06 18:00:51.234  6151  6151 V Capacitor: callback: 105285851, pluginId: LocalNotifications, methodName: getPending, methodData: {}
+11-06 18:00:51.237  6151  6151 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 105285852, pluginId: LocalNotifications, methodName: getDeliveredNotifications
+11-06 18:00:51.237  6151  6151 V Capacitor: callback: 105285852, pluginId: LocalNotifications, methodName: getDeliveredNotifications, methodData: {}

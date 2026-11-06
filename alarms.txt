@@ -1,0 +1,60 @@
+    RTC_WAKEUP #10: Alarm{3b05b05 type 0 origWhen 1793955600000 whenElapsed 174681 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3000
+        showIntent=PendingIntent{8b0775a: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{6fd2e68: PendingIntentRecord{a60a281 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #21: Alarm{4078d6b type 0 origWhen 1793958300000 whenElapsed 2874681 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3001
+        showIntent=PendingIntent{1000c8: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{9bd7561: PendingIntentRecord{974b886 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #23: Alarm{5d3d712 type 0 origWhen 1793961000000 whenElapsed 5574680 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3002
+        showIntent=PendingIntent{a63ee3: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{48420e0: PendingIntentRecord{b866f99 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #26: Alarm{c292bf8 type 0 origWhen 1793963700000 whenElapsed 8274680 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3003
+        showIntent=PendingIntent{2bd78d1: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{8224f36: PendingIntentRecord{4825e37 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #50: Alarm{d65d2a type 0 origWhen 1794042000000 whenElapsed 86574681 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3004
+        showIntent=PendingIntent{424a71b: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{86790b8: PendingIntentRecord{880de91 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #51: Alarm{7d521f6 type 0 origWhen 1794044700000 whenElapsed 89274680 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3005
+        showIntent=PendingIntent{5c99f7: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{a610064: PendingIntentRecord{ac3d2cd com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #52: Alarm{7296782 type 0 origWhen 1794047400000 whenElapsed 91974681 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3006
+        showIntent=PendingIntent{ab6de93: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{5fbed0: PendingIntentRecord{9c7cec9 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #53: Alarm{38a79ce type 0 origWhen 1794050100000 whenElapsed 94674680 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3007
+        showIntent=PendingIntent{666d0ef: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{549f7fc: PendingIntentRecord{2f58e85 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #55: Alarm{7858e01 type 0 origWhen 1794128400000 whenElapsed 172974680 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3008
+        showIntent=PendingIntent{ae7f4a6: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{fb1eee7: PendingIntentRecord{3374a94 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #56: Alarm{9bc093d type 0 origWhen 1794131100000 whenElapsed 175674681 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3009
+        showIntent=PendingIntent{20eb532: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{2249283: PendingIntentRecord{2887c00 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #57: Alarm{1e4fc39 type 0 origWhen 1794133800000 whenElapsed 178374680 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3010
+        showIntent=PendingIntent{6ef27e: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{893d3df: PendingIntentRecord{ef9582c com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #59: Alarm{b9cb18 type 0 origWhen 1794136500000 whenElapsed 181074681 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3011
+        showIntent=PendingIntent{78cf971: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{96cd356: PendingIntentRecord{63e5fd7 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #60: Alarm{10c80c4 type 0 origWhen 1794214800000 whenElapsed 259374680 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3012
+        showIntent=PendingIntent{d26bbad: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{b7acee2: PendingIntentRecord{31f2273 com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #61: Alarm{8b2e530 type 0 origWhen 1794217500000 whenElapsed 262074681 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3013
+        showIntent=PendingIntent{92065a9: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{b7af72e: PendingIntentRecord{63f72cf com.dijaedadula.fitdad broadcastIntent}}
+    RTC_WAKEUP #62: Alarm{919245c type 0 origWhen 1794220200000 whenElapsed 264774680 com.dijaedadula.fitdad}
+      tag=*walarm*:com.dijaedadula.fitdad.REMINDER_FIRE.3014
+        showIntent=PendingIntent{3f0b365: PendingIntentRecord{11c6d8b com.dijaedadula.fitdad startActivity}}
+      operation=PendingIntent{943583a: PendingIntentRecord{d6a6ceb com.dijaedadula.fitdad broadcastIntent}}

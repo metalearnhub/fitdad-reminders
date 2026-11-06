@@ -1,0 +1,10 @@
+Broadcast completed: result=0
+Broadcast completed: result=0
+water events before=33 after=34
+now=1793963097; water plan after notification glass (id:at):
+2000:1793964294366
+2001:1793965494366
+2002:1793966694366
+2003:1793967894366
+resumed:       topResumedActivity=ActivityRecord{7a5e51f u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t7}
+snooze armed: &quot;5147&quot;: 

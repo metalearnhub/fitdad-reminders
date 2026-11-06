@@ -1,0 +1,11 @@
+NOT FOUND: Allow
+NOT FOUND: Start day
+NOT FOUND: + 250 ml
+TAPPED: Settings
+NOT FOUND: Test alarm (10s)
+Broadcasting: Intent { act=com.dijaedadula.fitdad.WIDGET_WATER flg=0x400000 cmp=com.dijaedadula.fitdad/.FitDadWidget }
+Broadcast completed: result=0
+Broadcasting: Intent { act=com.dijaedadula.fitdad.WIDGET_STAND flg=0x400000 cmp=com.dijaedadula.fitdad/.FitDadWidget }
+Broadcast completed: result=0
+Broadcasting: Intent { act=com.dijaedadula.fitdad.WIDGET_ENDWORK flg=0x400000 cmp=com.dijaedadula.fitdad/.FitDadWidget }
+Broadcast completed: result=0

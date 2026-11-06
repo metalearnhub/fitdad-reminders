@@ -1,0 +1,34 @@
+tz: Fri Nov  6 16:59:17 PST 2026
+T0=1793955579
+alarm-clock alarms armed: 0
+ringer: 0 (0 = silent)
+clock -> Fri Nov  6 17:30:39 PST 2026
+== +31 min (stand reminder due, not answered -> expect STAND shown)
+pkg=com.dijaedadula.fitdad id=0
+                android.title=String (Stand up 🧍)
+                android.title=String (Drink water 💧 Glass 3 of 12)
+ringer now: 0
+11-06 17:30:39.406  6151  6151 I UpkeepGate: ringing on alarm stream (ringerMode=0, dnd=true) for water
+11-06 17:30:41.004  6151  6151 I UpkeepGate: ringing on alarm stream (ringerMode=0, dnd=true) for stand
+11-06 09:30:39:354 player piid:119 new AudioAttributes:AudioAttributes: usage=USAGE_ALARM content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+11-06 09:30:40:995 player piid:127 new AudioAttributes:AudioAttributes: usage=USAGE_ALARM content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+	AudioAttributes: usage=USAGE_ALARM content=CONTENT_TYPE_UNKNOWN flags=0x800 tags= bundle=null forVolume: true stream: STREAM_ALARM(4)
+clock -> Fri Nov  6 17:36:39 PST 2026
+== +37 min (follow-up 5 min after an unanswered stand-up -> expect 'Did you stand up?')
+pkg=com.dijaedadula.fitdad id=0
+                android.title=String (Did you stand up? 🧍 (5:29 PM))
+                android.title=String (Did you drink your water? 💧 (5:29 PM))
+== +31 after widget Stood up (expect stand notification cleared)
+pkg=com.dijaedadula.fitdad id=0
+                android.title=String (Did you drink your water? 💧 (5:29 PM))
+clock -> Fri Nov  6 17:49:39 PST 2026
+widget: stood up at +50
+clock -> Fri Nov  6 18:00:39 PST 2026
+== +61 min (stand due; stood up 11 min ago via widget -> expect NO stand)
+pkg=com.dijaedadula.fitdad id=0
+                android.title=String (Drink water 💧 Glass 3 of 12)
+widget: done working at +61
+clock -> Fri Nov  6 19:04:39 PST 2026
+== +125 min (stand reminders due but work ended -> expect NO stand)
+pkg=com.dijaedadula.fitdad id=0
+                android.title=String (Did you drink your water? 💧 (6:57 PM))

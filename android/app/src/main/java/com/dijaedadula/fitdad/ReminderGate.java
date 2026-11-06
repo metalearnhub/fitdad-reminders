@@ -119,6 +119,80 @@ public class ReminderGate extends BroadcastReceiver {
         ctx.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().putString(KEY_ITEMS, all.toString()).apply();
     }
 
+    // ---------- water re-plan after a glass logged outside the app (widget / notification) ----------
+    // Same rule as the app: glasses still needed, spaced evenly from your last glass to 1 h before bedtime,
+    // never faster than ~0.8 L per hour. So a tap never leaves an old reminder ringing too soon.
+    static void replanWater(Context ctx) {
+        try {
+            JSONObject root = FitDadWidget.load(ctx);
+            JSONObject st = root.optJSONObject("settings");
+            if (st != null) {
+                JSONObject f = st.optJSONObject("features");
+                if (f != null && !f.optBoolean("water", true)) return;
+                if ("fixed".equals(st.optString("waterMode", "auto"))) return; // fixed interval: keep the grid
+            }
+            JSONObject r = FitDadWidget.today(root);
+            int goal = FitDadWidget.setting(root, "waterGoal", 3000), glass = FitDadWidget.setting(root, "glass", 250);
+            int water = r.optInt("water", 0);
+            int left = Math.max(0, (int) Math.ceil((goal - water) / (double) glass));
+            long now = System.currentTimeMillis();
+
+            // bedtime for today's (4 AM → 4 AM) day
+            String key = FitDadWidget.logicalKey();
+            String bed = r.optString("bedtime", st != null ? st.optString("bedTime", "23:00") : "23:00");
+            int lastBefore = st != null ? st.optInt("lastGlassBefore", 60) : 60;
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            String[] ymd = key.split("-"), hm = bed.split(":");
+            cal.set(Integer.parseInt(ymd[0]), Integer.parseInt(ymd[1]) - 1, Integer.parseInt(ymd[2]), 0, 0, 0);
+            cal.set(java.util.Calendar.MILLISECOND, 0);
+            long base = cal.getTimeInMillis();
+            cal.set(java.util.Calendar.HOUR_OF_DAY, Integer.parseInt(hm[0])); cal.set(java.util.Calendar.MINUTE, Integer.parseInt(hm[1]));
+            long bedAt = cal.getTimeInMillis();
+            if (bedAt <= base + 4 * 3600000L) bedAt += 86400000L;
+            long end = bedAt - lastBefore * 60000L;
+
+            long lastDrink = lastAnswer(r.optJSONArray("log"), new String[] { "water" });
+            long dayStart = r.optLong("dayStart", 0);
+            long anchor = Math.max(lastDrink > 0 ? lastDrink : (dayStart > 0 ? dayStart : now), dayStart);
+            long minGap = Math.max(20, Math.round(glass / 800.0 * 60)) * 60000L;
+
+            java.util.List<Long> times = new java.util.ArrayList<>();
+            if (left > 0 && end > now) {
+                double step = Math.max(minGap, (end - anchor) / (double) left);
+                if (anchor + step >= now + 60000) {
+                    for (int k = 1; k <= left; k++) times.add(Math.round(anchor + k * step));
+                } else {
+                    long first = now + Math.min(15 * 60000L, Math.max(60000L, (end - now) / left));
+                    times.add(first);
+                    if (left > 1) { step = Math.max(minGap, (end - first) / (double) (left - 1)); for (int k = 1; k < left; k++) times.add(Math.round(first + k * step)); }
+                }
+            }
+            // swap the planned water reminders (2000–2099) for the new ones
+            JSONObject all = loadItems(ctx);
+            JSONArray ids = all.names();
+            if (ids != null) for (int i = 0; i < ids.length(); i++) {
+                int id = Integer.parseInt(ids.getString(i));
+                if (id >= 2000 && id < 2100) { all.remove(ids.getString(i)); cancelAlarm(ctx, id); }
+            }
+            int total = (int) Math.ceil(goal / (double) glass);
+            JSONArray add = new JSONArray();
+            for (int k = 0; k < times.size() && k < 40; k++) {
+                long t = times.get(k);
+                if (t > end + 1000) break;
+                long gap = k > 0 ? t - times.get(k - 1) : (times.size() > 1 ? times.get(1) - times.get(0) : 3600000L);
+                JSONObject it = new JSONObject();
+                it.put("id", 2000 + k); it.put("at", t);
+                it.put("title", "Drink water 💧 Glass " + (total - left + k + 1) + " of " + total);
+                it.put("body", glass + " ml now");
+                it.put("channel", "fitdad-water"); it.put("type", "WATER"); it.put("kind", "water");
+                it.put("follow", false); it.put("of", 0); it.put("gap", gap);
+                add.put(it);
+            }
+            saveItems(ctx, all);
+            addItems(ctx, add);
+        } catch (Exception ignored) { }
+    }
+
     // ---------- firing ----------
 
     @Override

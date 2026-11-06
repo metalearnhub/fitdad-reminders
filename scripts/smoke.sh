@@ -97,6 +97,9 @@ adb shell am broadcast -n com.dijaedadula.fitdad/.NotifActionReceiver -a com.dij
 sleep 3
 B1=$(adb shell run-as com.dijaedadula.fitdad cat shared_prefs/CapacitorStorage.xml | grep -o '&quot;k&quot;:&quot;water&quot;' | wc -l)
 echo "water events before=$B0 after=$B1" | tee -a smoke/inplace.txt
+NOWS=$(adb shell date +%s | tr -d '\r')
+echo "now=$NOWS; water plan after notification glass (id:at):" | tee -a smoke/inplace.txt
+adb shell run-as com.dijaedadula.fitdad cat shared_prefs/upkeep_sched.xml | grep -oE '&quot;20[0-9]{2}&quot;:\{&quot;id&quot;:20[0-9]{2},&quot;at&quot;:[0-9]+' | sed -E 's/.*id&quot;:([0-9]+),&quot;at&quot;:([0-9]+)/\1:\2/' | head -4 | tee -a smoke/inplace.txt
 echo "resumed: $(adb shell dumpsys activity activities | grep -m1 -E 'mResumedActivity|ResumedActivity')" | tee -a smoke/inplace.txt
 echo "snooze armed: $(adb shell run-as com.dijaedadula.fitdad cat shared_prefs/upkeep_sched.xml | grep -oE '&quot;5[0-9]{3}&quot;:' | head -3 | tr '\n' ' ')" | tee -a smoke/inplace.txt
 adb exec-out screencap -p > smoke/09-inplace-home.png

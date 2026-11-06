@@ -752,7 +752,7 @@
   // ---------- Rendering ----------
   function updateNextLabel(list) {
     const now = Date.now();
-    const next = (kind) => list.filter((x) => x.extra.kind === kind && x.at > now).sort((a, b) => a.at - b.at)[0];
+    const next = (kind) => list.filter((x) => x.extra.kind === kind && !x.extra.follow && x.at > now).sort((a, b) => a.at - b.at)[0];
     const s = next('stand'), w = next('water'), nd = next('nudge');
     const parts = [];
     if (s) parts.push(`Next stand-up ${fmtTime(new Date(s.at))}`);
@@ -1017,8 +1017,10 @@
         showTab(tab.dataset.view);
       };
     });
-    $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); };
-    $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); };
+    // Every + or − re-plans the rest of today's glasses up to bedtime, and says when the next one is
+    const replanNote = (msg) => { const n = $('nextWater') ? $('nextWater').textContent : ''; toast(n ? `${msg} · ${n.replace('Next glass', 'next glass')}` : msg); };
+    $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); replanNote(`+${settings.glass} ml`); };
+    $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); replanNote(`−${settings.glass} ml · re-planned`); };
     $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); await reschedule(); };
     $('backupNow').onclick = async () => {
       try { const r = await saveRestorePoint('manual', true); toast(`Backup saved · ${r.where || r.name}`); }

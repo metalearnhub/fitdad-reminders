@@ -147,6 +147,7 @@ public class FitDadWidget extends AppWidgetProvider {
             ed.putString(KEY, root.toString());
             ed.apply();
             cancelFollowUps(ctx, water, r.optJSONArray("follows"));
+            if (water) ReminderGate.replanWater(ctx); // re-space the rest of today's glasses from this one
         } catch (Exception ignored) { }
     }
 

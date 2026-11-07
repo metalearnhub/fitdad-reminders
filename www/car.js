@@ -179,7 +179,7 @@ window.UpkeepCar = function (api) {
       const all = lto.concat(ins);
       Object.assign(keep, { name: 'LTO registration + insurance', lto: true, icon: '📄', km: 0, months: 12, group: 'papers', lastDate: Math.max(...all.map((i) => i.lastDate || 0)) || Date.now() });
       const drop = new Set(all.filter((i) => i !== keep).map((i) => i.id));
-      d.history.forEach((h) => { if (drop.has(h.itemId)) h.itemId = keep.id; });
+      d.history.forEach((h) => { if (drop.has(h.itemId)) h.itemId = keep.id; if (h.itemIds) h.itemIds = [...new Set(h.itemIds.map((x) => (drop.has(x) ? keep.id : x)))]; });
       d.items = d.items.filter((i) => !drop.has(i.id));
     });
   }
@@ -656,11 +656,12 @@ window.UpkeepCar = function (api) {
   function itemSheet(itemId) {
     const d = data(); const item = d.items.find((i) => i.id === itemId); if (!item) return;
     const c = d.cars.find((x) => x.id === item.carId); const info = dueInfo(item, c);
-    const hist = d.history.filter((h) => h.itemId === item.id).sort((a, b) => b.t - a.t).slice(0, 5);
+    const hist = d.history.filter((h) => idsOfRec(h).includes(item.id)).sort((a, b) => b.t - a.t).slice(0, 5);
     sheet(`
       <div class="sheet-icon">${item.icon || '🔧'}</div><h2>${esc(item.name)}</h2>
       <p class="muted">${dueText(info)}</p>
       ${whyFor(item) ? `<p class="small">${affectsFuel(item) ? '⛽ ' : ''}${esc(whyFor(item))}</p>` : ''}
+      ${/pms|preventive/i.test(item.name) ? '<p class="small muted">Logging a PMS also resets Change oil and Oil filter (untick them if they weren\'t done).</p>' : ''}
       ${isLto(item) ? (() => {
         const rule = ltoRule(c.plate), w = nextLto(c, item), y0 = new Date().getFullYear();
         return `<p class="small"><b>${ruleText(rule)}</b>${rule ? '' : ` <button class="linkbtn" id="ltoPlate" style="display:inline;margin:0">Add plate</button>`}</p>
@@ -1191,6 +1192,18 @@ window.UpkeepCar = function (api) {
     other: [],
   };
 
+  // Which schedules a service covers. PMS usually includes the oil change, so logging PMS resets those too.
+  const PART_RESETS = {
+    'engine oil': 'change oil', 'oil change': 'change oil', 'oil filter': 'oil filter', 'air filter': 'air filter', 'spark plugs': 'spark plugs',
+    'fuel filter': 'fuel filter', 'drive belt': 'drive / fan belt', 'timing belt': 'timing belt', 'o2 sensor': 'oxygen (o2) sensor',
+    'throttle cleaning': 'throttle body cleaning', 'tire': 'tire replacement', 'wheel alignment': 'wheel alignment', 'tire rotation': 'tire rotation',
+    'brake pads': 'brake pads', 'brake fluid': 'brake fluid', 'coolant': 'coolant flush', 'transmission fluid': 'transmission fluid',
+    'power steering fluid': 'power steering fluid', 'battery': 'battery replacement', 'shock absorber': 'shock absorbers', 'wiper blades': 'wiper blades',
+    'cabin filter': 'cabin / aircon filter', 'system flush': 'aircon cleaning', 'evaporator cleaning (pull-down)': 'aircon cleaning', 'freon recharge': 'aircon refrigerant check',
+  };
+  const PMS_INCLUDES = ['change oil', 'oil filter', 'engine oil level check']; // ticked by default when you log a PMS
+  const idsOfRec = (h) => h.itemIds || (h.itemId ? [h.itemId] : []);
+
   function recordForm(c, { item, rec }) {
     const its = itemsOf(c);
     const r = rec ? JSON.parse(JSON.stringify(rec)) : {
@@ -1199,6 +1212,13 @@ window.UpkeepCar = function (api) {
       labor: '', laborWm: 0, shop: '', notes: '', receipts: [], costMode: 'items', total: '',
     };
     r.parts = (r.parts || []).map((p) => ({ name: p.name || '', cost: p.cost || '', wm: p.wm || 0 }));
+    const byName = (n) => its.find((i) => i.name.toLowerCase() === n);
+    r.itemIds = rec ? idsOfRec(rec).slice() : item ? [item.id] : [];
+    if (!rec && item && /pms|preventive/i.test(item.name)) {
+      PMS_INCLUDES.forEach((n) => { const x = byName(n); if (x && !r.itemIds.includes(x.id)) r.itemIds.push(x.id); });
+      if (!r.parts.length) r.parts = [{ name: 'Engine oil', cost: '', wm: 0 }, { name: 'Oil filter', cost: '', wm: 0 }];
+    }
+    const origIds = r.itemIds.slice();
     if (rec && !rec.costMode) r.costMode = 'items';
     if (r.costMode === 'total' && rec) r.total = rec.cost || '';
     const draw = () => sheet(`
@@ -1233,7 +1253,8 @@ window.UpkeepCar = function (api) {
         <label>Receipts</label>
         <div class="thumbs" id="rfThumbs">${thumbsHTML(r.receipts, true)}
           <label class="thumb add">📷<input type="file" id="rfFile" accept="image/*,application/pdf" multiple hidden /></label></div>
-        ${its.length ? `<label>Also resets this schedule<select id="rfItem"><option value="">— none —</option>${its.map((i) => `<option value="${i.id}" ${r.itemId === i.id ? 'selected' : ''}>${i.icon || '🔧'} ${esc(i.name)}</option>`).join('')}</select></label>` : ''}
+        ${its.length ? `<label>Resets these schedules <span class="muted small">— everything done in this visit</span></label>
+          <div class="chips tight resets">${its.slice().sort((a, b) => (r.itemIds.includes(b.id) - r.itemIds.includes(a.id)) || a.name.localeCompare(b.name)).map((i) => `<button class="chip ${r.itemIds.includes(i.id) ? 'on' : ''}" data-rs="${i.id}">${r.itemIds.includes(i.id) ? '✓ ' : ''}${i.icon || '🔧'} ${esc(i.name)}</button>`).join('')}</div>` : ''}
         <label>Notes<input id="rfNotes" value="${esc(r.notes || '')}" placeholder="optional" /></label>
       </div>
       <div class="sheet-btns">
@@ -1244,7 +1265,7 @@ window.UpkeepCar = function (api) {
       const grab = () => {
         r.group = $('rfGroup').value; r.name = $('rfName').value; r.km = $('rfKm').value;
         r.t = $('rfDate').value ? new Date($('rfDate').value + 'T12:00:00').getTime() : Date.now();
-        r.shop = $('rfShop').value; r.notes = $('rfNotes').value; if ($('rfItem')) r.itemId = $('rfItem').value;
+        r.shop = $('rfShop').value; r.notes = $('rfNotes').value;
         if ($('rfLabor')) r.labor = $('rfLabor').value;
         r.laborWm = Number($('rfLaborW').value) || 0;
         if ($('rfTotalIn')) r.total = $('rfTotalIn').value;
@@ -1262,9 +1283,20 @@ window.UpkeepCar = function (api) {
       body.querySelectorAll('[data-pc], #rfLabor').forEach((x) => { x.oninput = total; });
       body.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { grab(); if (b.dataset.mode === 'total' && !r.total) { const t = r.parts.reduce((a, p) => a + (Number(p.cost) || 0), 0) + (Number(r.labor) || 0); r.total = t || ''; } r.costMode = b.dataset.mode; draw(); }; });
       $('rfGroup').onchange = () => { grab(); draw(); };
-      body.querySelectorAll('[data-sug]').forEach((b) => { b.onclick = () => { grab(); r.parts.push({ name: b.dataset.sug, cost: '', wm: 0 }); if (!r.name && b.dataset.sug) r.name = b.dataset.sug; draw(); if (!b.dataset.sug) { const ins = body.querySelectorAll('[data-pn]'); } }; });
+      body.querySelectorAll('[data-sug]').forEach((b) => { b.onclick = () => {
+        grab(); const n = b.dataset.sug;
+        r.parts.push({ name: n, cost: '', wm: 0 }); if (!r.name && n) r.name = n;
+        const target = PART_RESETS[n.toLowerCase()] && byName(PART_RESETS[n.toLowerCase()]);
+        if (target && !r.itemIds.includes(target.id)) r.itemIds.push(target.id);
+        draw();
+      }; });
       body.querySelectorAll('[data-prm]').forEach((b) => { b.onclick = () => { grab(); r.parts.splice(+b.dataset.prm, 1); draw(); }; });
-      if ($('rfItem')) $('rfItem').onchange = () => { const it = its.find((i) => i.id === $('rfItem').value); if (it) { grab(); if (!r.name) r.name = it.name; r.group = groupOf(it); draw(); } };
+      body.querySelectorAll('[data-rs]').forEach((b) => { b.onclick = () => {
+        grab(); const id = b.dataset.rs;
+        r.itemIds = r.itemIds.includes(id) ? r.itemIds.filter((x) => x !== id) : r.itemIds.concat(id);
+        const it = its.find((i) => i.id === id); if (it && !r.name && r.itemIds.includes(id)) { r.name = it.name; r.group = groupOf(it); }
+        draw();
+      }; });
       $('rfFile').onchange = async (e) => { grab(); const add = await addReceiptFiles([...e.target.files]); r.receipts = (r.receipts || []).concat(add); draw(); };
       body.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); grab(); r.receipts = r.receipts.filter((x) => x.id !== b.dataset.rm); draw(); }; });
       body.querySelectorAll('[data-thumb]').forEach((im) => { im.onclick = () => viewReceipt(im.dataset.thumb); });
@@ -1275,22 +1307,24 @@ window.UpkeepCar = function (api) {
         const title = r.name.trim() || (parts.length ? parts.map((p) => p.name).slice(0, 3).join(', ') : '');
         if (!title) { toast('Add a title or tap an item'); return; }
         const km = r.km === '' ? 0 : Math.round(Number(r.km));
-        const it = its.find((i) => i.id === r.itemId);
+        const resetItems = r.itemIds.map((id) => its.find((i) => i.id === id)).filter(Boolean);
+        const it = resetItems[0];
         const out = {
-          carId: c.id, itemId: r.itemId || null, group: r.group, name: title, icon: it ? it.icon : G(r.group).icon, t: r.t, km,
+          carId: c.id, itemId: it ? it.id : null, itemIds: resetItems.map((i) => i.id), group: r.group, name: title, icon: it ? it.icon : G(r.group).icon, t: r.t, km,
           parts, labor: r.costMode === 'items' ? Number(r.labor) || 0 : 0, laborWm: r.laborWm || 0, costMode: r.costMode, cost: t,
           shop: r.shop.trim(), notes: r.notes.trim(), receipts: r.receipts || [], warranty: rec ? rec.warranty || null : null,
         };
         const before = statusMap(c), prevKm = currentKm(c);
         if (km > currentKm(c)) addOdo(c, km, isoDay(r.t) === isoDay(Date.now()) ? Date.now() : Math.min(r.t, Date.now()));
-        if (it && (!it.lastDate || r.t >= it.lastDate - DAY)) { it.lastDate = r.t; it.lastKm = km || currentKm(c); if (isLto(it)) it.validYear = null; }
+        // reset each ticked schedule from this service (never move one backwards past a newer service)
+        resetItems.forEach((x) => { if (!x.lastDate || r.t >= x.lastDate - DAY) { x.lastDate = r.t; x.lastKm = km || currentKm(c); if (isLto(x)) x.validYear = null; } });
         if (rec) {
           (rec.receipts || []).filter((x) => !out.receipts.some((y) => y.id === x.id)).forEach((x) => deleteReceipt(x.id));
           Object.assign(rec, out);
         } else data().history.push({ id: uid(), ...out });
         const nw = parts.filter((p) => p.wm).length + (out.laborWm ? 1 : 0);
         closeSheet(); view = 'records';
-        await commitWithOdoCheck(c, before, prevKm, `${title} saved${nw ? ` · ${nw} warrant${nw > 1 ? 'ies' : 'y'} tracked` : ''}`);
+        await commitWithOdoCheck(c, before, prevKm, `${title} saved${resetItems.length ? ` · reset ${resetItems.map((x) => x.name).join(', ')}` : ''}${nw ? ` · ${nw} warrant${nw > 1 ? 'ies' : 'y'}` : ''}`);
       };
       if ($('rfDel')) $('rfDel').onclick = async () => {
         if (!confirm('Delete this record and its receipts?')) return;
@@ -1320,6 +1354,7 @@ window.UpkeepCar = function (api) {
           ${!ws.length ? '<p class="muted small">No warranty recorded</p>' : ''}`;
       })()}
       ${(r.receipts || []).length ? `<div class="thumbs" style="justify-content:center">${thumbsHTML(r.receipts)}</div>` : ''}
+      ${idsOfRec(r).length ? `<p class="small">🔄 Reset: ${idsOfRec(r).map((id) => (data().items.find((i) => i.id === id) || {}).name).filter(Boolean).map(esc).join(', ')}</p>` : ''}
       ${r.notes ? `<p class="small">${esc(r.notes)}</p>` : ''}
       <div class="sheet-btns"><button class="btn ghost" id="rsEdit">Edit</button><button class="btn ghost" id="rsClose">Close</button></div>`, (body) => {
       $('rsClose').onclick = closeSheet;

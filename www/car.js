@@ -818,8 +818,14 @@ window.UpkeepCar = function (api) {
     const segsAll = segments(c);
     const last = segsAll[segsAll.length - 1];
     const recent = segsAll.slice(-12);
-    const lb = cur.segs.slice().sort((a, b) => (lbSort === 'eff' ? b.eff - a.eff : b.t - a.t));
-    const medal = (i) => (lbSort === 'eff' ? ['🥇', '🥈', '🥉'][i] || i + 1 : '');
+    // Every fill-up in the period is a row — including your first (starting) full tank and partial top-ups.
+    // Rows with a km/L result are ranked; starting/partial ones show what they are.
+    const [pa, pb] = periodRange(period);
+    const segBy = Object.fromEntries(segments(c).map((sg) => [sg.fill.id, sg]));
+    const lb = fills(c).filter((f) => f.t >= pa && f.t < pb).map((f) => ({ f, s: segBy[f.id] || null }))
+      .sort((a, b) => (lbSort === 'eff' ? ((b.s ? b.s.eff : -1) - (a.s ? a.s.eff : -1)) || b.f.t - a.f.t : b.f.t - a.f.t));
+    let rank = 0;
+    const medal = (row) => (!row.s || lbSort !== 'eff' ? '' : (++rank, ['🥇', '🥈', '🥉'][rank - 1] || rank));
     const pv = PREV_LABEL[period];
     // monthly breakdown (last 12 months with data)
     const months = {};
@@ -830,7 +836,7 @@ window.UpkeepCar = function (api) {
     return `
       <div class="card">
         <div class="water-head"><h2>Fuel efficiency</h2><span class="muted small">${last ? 'last tank ' + f1(last.eff) + ' km/L' : ''}</span></div>
-        <div class="chips">${['all', 'month', 'quarter', 'year'].map((p) => `<button class="chip ${p === period ? 'on' : ''}" data-period="${p}">${PERIOD_LABEL[p]} (${stats(c, p).segs.length})</button>`).join('')}</div>
+        <div class="chips">${['all', 'month', 'quarter', 'year'].map((p) => `<button class="chip ${p === period ? 'on' : ''}" data-period="${p}">${PERIOD_LABEL[p]} (${stats(c, p).fills.length || fills(c).filter((f) => { const [a, b2] = periodRange(p); return f.t >= a && f.t < b2; }).length})</button>`).join('')}</div>
         <div class="kpis">
           <div class="kpi"><div class="kv water-c">${f1(cur.eff)}<small> km/L</small></div><div class="kl">avg efficiency${cur.eff ? ' · ' + f1(100 / cur.eff) + ' L/100km' : ''}</div>${pv ? deltaTag(cur.eff, prev.eff, true).replace('${x}', pv) : ''}</div>
           <div class="kpi"><div class="kv">₱${f2(cur.perKm)}</div><div class="kl">cost per km</div>${pv ? deltaTag(cur.perKm, prev.perKm, false).replace('${x}', pv) : ''}</div>
@@ -841,15 +847,19 @@ window.UpkeepCar = function (api) {
       </div>
 
       <div class="card">
-        <div class="water-head"><h2>Leaderboard</h2><span class="muted small">${PERIOD_LABEL[period]}</span></div>
+        <div class="water-head"><h2>Leaderboard &amp; fill-ups</h2><span class="muted small">${PERIOD_LABEL[period]}</span></div>
         <div class="seg" style="margin:6px 0 8px">
           <button class="chip ${lbSort === 'eff' ? 'on' : ''}" data-sort="eff">Best km/L</button>
           <button class="chip ${lbSort === 'date' ? 'on' : ''}" data-sort="date">Latest</button>
         </div>
         ${lb.length ? `<div class="tablewrap"><table class="lb">
-          <thead><tr><th>#</th><th>Date</th><th>km</th><th>L</th><th>km/L</th><th>₱/L</th><th>₱/km</th></tr></thead>
-          <tbody>${lb.map((s, i) => `<tr data-fill="${s.fill.id}"><td>${medal(i)}</td><td>${new Date(s.t).toLocaleDateString([], { month: 'short', day: 'numeric' })}</td><td>${Math.round(s.dist)}</td><td>${f1(s.liters)}</td><td class="${s.eff >= (cur.eff || 0) ? 'good' : 'bad'}"><b>${f1(s.eff)}</b></td><td>${f2(s.price)}</td><td>${f2(s.perKm)}</td></tr>`).join('')}</tbody>
-        </table></div>` : segments(c).length ? `<p class="muted small">No tanks finished ${PERIOD_LABEL[period].toLowerCase()}. <button class="linkbtn" data-period="all" style="display:inline;margin:0">Show all time</button></p>` : '<p class="muted small">Log a full tank after your starting point to see the first result.</p>'}
+          <thead><tr><th>#</th><th>Date</th><th>km</th><th>L</th><th>km/L</th><th>₱/L</th><th>₱</th></tr></thead>
+          <tbody>${lb.map((row) => { const { f, s: sg } = row; const tag = fillNotes[f.id] === 'starting point' ? 'Start' : f.full ? '—' : 'Partial';
+            return `<tr data-fill="${f.id}"><td>${medal(row)}</td><td>${new Date(f.t).toLocaleDateString([], { month: 'short', day: 'numeric' })}</td><td>${sg ? Math.round(sg.dist) : '—'}</td><td>${f.liters ? f1(f.liters) : '—'}</td>
+              <td class="${sg ? (sg.eff >= (cur.eff || 0) ? 'good' : 'bad') : 'muted'}">${sg ? `<b>${f1(sg.eff)}</b>` : `<span class="chip-s">${tag}</span>`}</td><td>${f.price ? f2(f.price) : '—'}</td><td>${f.total ? peso(f.total) : '—'}</td></tr>`; }).join('')}</tbody>
+        </table></div>
+        ${!cur.segs.length ? '<p class="muted small">km/L appears from your next full tank — it\'s measured tank to tank.</p>' : ''}`
+        : fills(c).length ? `<p class="muted small">No fill-ups ${PERIOD_LABEL[period].toLowerCase()}. <button class="linkbtn" data-period="all" style="display:inline;margin:0">Show all time</button></p>` : '<p class="muted small">No fill-ups yet. Tap ⛽ Log fill-up.</p>'}
       </div>
 
       <div class="card">

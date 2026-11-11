@@ -322,6 +322,7 @@ window.UpkeepCar = function (api) {
     $('sheet').classList.add('show');
     sheetOpen = true;
     if (onMount) onMount(body);
+    body.querySelectorAll('[data-mapzones]').forEach((b) => { b.onclick = () => { closeSheet(); mapFocus = b.dataset.mapzones.split(','); view = 'map'; render(); setTimeout(() => { const m = document.querySelector('#carRoot .map-wrap'); if (m) m.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50); }; });
   }
   function closeSheet() { $('sheet').classList.remove('show'); sheetOpen = null; }
   async function commit(msg) { await api.save(); render(); await api.reschedule(); if (msg) toast(msg); }
@@ -352,7 +353,73 @@ window.UpkeepCar = function (api) {
     });
   }
 
-  let view = 'maint', period = 'all', lbSort = 'eff', recGroup = 'all';
+  let view = 'maint', period = 'all', lbSort = 'eff', recGroup = 'all', mapFocus = null;
+
+  // ================= CAR MAP (where each part is) =================
+  const MAP = window.UpkeepCarMap || null;
+  const itemName = (id) => (data().items.find((i) => i.id === id) || {}).name;
+  const zonesOfItem = (i) => (MAP ? MAP.zonesFor(i.name) : []);
+  function zonesOfRec(r) {
+    if (!MAP) return [];
+    const z = MAP.zonesFor((r.parts || []).map((p) => p.name), idsOfRec(r).map(itemName));
+    return z.length ? z : MAP.zonesFor(r.name);
+  }
+  const RANK = { overdue: 3, soon: 2, ok: 1, rec: 0 };
+  function mapState(c) {
+    const by = {}; const status = {};
+    const at = (z) => (by[z] = by[z] || { items: [], recs: [] });
+    itemsOf(c).forEach((i) => { const info = dueInfo(i, c); zonesOfItem(i).forEach((z) => { at(z).items.push({ i, info }); if (!status[z] || RANK[info.status] > RANK[status[z]]) status[z] = info.status; }); });
+    recsOf(c).forEach((r) => zonesOfRec(r).forEach((z) => { at(z).recs.push(r); if (!status[z]) status[z] = 'rec'; }));
+    return { by, status };
+  }
+  function mapLabel(c) { return /apv/i.test(c && c.name || '') ? 'Suzuki APV · top view' : 'Van layout (Suzuki APV) · top view'; }
+  function miniMapHTML(zs, { link = true } = {}) {
+    if (!MAP || !zs.length) return '';
+    const zz = zs.map((z) => MAP.zone(z)).filter(Boolean);
+    return `<div class="map-wrap map-mini">${MAP.svg({ focus: zs })}
+      ${zz.slice(0, 4).map((z) => `<div class="map-where"><span>📍</span><span><b>${esc(z.name)}</b> — ${esc(z.where)}</span></div>`).join('')}
+      ${zz.length > 4 ? `<div class="map-where muted small">+${zz.length - 4} more parts</div>` : ''}
+      ${link ? `<button class="linkbtn" data-mapzones="${zs.join(',')}" style="margin:6px auto 0">🗺 See on the full map</button>` : ''}</div>`;
+  }
+  function mapHTML(c) {
+    if (!MAP) return '';
+    const { by, status } = mapState(c);
+    const focus = mapFocus && mapFocus.length ? mapFocus : null;
+    const attention = Object.keys(by).filter((z) => status[z] === 'overdue' || status[z] === 'soon').sort((a, b) => RANK[status[b]] - RANK[status[a]]);
+    const tracked = Object.keys(by).length;
+    return `<div class="card">
+      <div class="water-head"><h2>🗺 Parts map</h2><span class="muted small">${mapLabel(c)}</span></div>
+      <p class="muted small" style="margin-top:0">X-ray view, front of the van at the top. The engine sits <b>under the front seats</b>. Tap any part to see its schedule and records.</p>
+      <div class="map-legend"><span><i style="background:var(--danger)"></i>Overdue</span><span><i style="background:var(--amber)"></i>Due soon</span><span><i style="background:var(--stand)"></i>OK</span><span><i style="background:var(--water)"></i>Records only</span><span><i style="background:#232A35;border:1px solid #4B5565"></i>Not tracked</span></div>
+      ${focus ? `<div class="chips tight"><button class="chip on" id="mapClear">📍 ${focus.map((z) => esc((MAP.zone(z) || {}).name || z)).slice(0, 3).join(', ')}${focus.length > 3 ? '…' : ''} &nbsp;× Show all</button></div>` : ''}
+      <div class="map-wrap">${MAP.svg({ status, focus, zoom: false, labels: true })}</div>
+      ${attention.length ? `<h3 style="margin:10px 0 4px">Needs attention</h3><div class="map-tags">${attention.map((z) => `<button class="chip" data-zone="${z}"><span class="ci-dot ${status[z]}" style="display:inline-block;margin-right:6px;background:${status[z] === 'overdue' ? 'var(--danger)' : 'var(--amber)'}"></span>${MAP.zone(z).icon} ${esc(MAP.zone(z).name)}</button>`).join('')}</div>` : ''}
+      <p class="muted small" style="margin-bottom:0">${tracked} of ${MAP.ZONES.length} parts have a schedule or record. Positions are approximate — drawn for finding parts, not a factory diagram.</p>
+    </div>`;
+  }
+  function zoneSheet(c, zid) {
+    const z = MAP && MAP.zone(zid); if (!z) return;
+    const { by } = mapState(c); const here = by[zid] || { items: [], recs: [] };
+    const recs = here.recs.slice().sort((a, b) => b.t - a.t);
+    sheet(`
+      <div class="sheet-icon">${z.icon}</div><h2>${esc(z.name)}</h2>
+      ${miniMapHTML([zid], { link: false })}
+      <h3 style="text-align:left;margin:12px 0 0">Schedules</h3>
+      <ul class="carlist" style="text-align:left">${here.items.map(({ i, info }) => `
+        <li class="caritem ${info.status}" data-item="${i.id}"><span class="ci-icon">${i.icon || '🔧'}</span>
+          <span class="ci-main"><b>${esc(i.name)}</b><span class="muted small">${dueText(info)}</span>${wearBar(wear(i, c), info.status)}</span><span class="ci-dot"></span></li>`).join('') || '<li class="muted small">Nothing scheduled for this part.</li>'}</ul>
+      <h3 style="text-align:left;margin:12px 0 0">Records</h3>
+      <ul class="carlist" style="text-align:left">${recs.map(recRowHTML).join('') || '<li class="muted small">No repairs or replacements logged here yet.</li>'}</ul>
+      <div class="sheet-btns">
+        <button class="btn primary" id="zsLog">🧾 Log repair / replacement here</button>
+        <button class="btn ghost" id="zsClose">Close</button>
+      </div>`, (body) => {
+      $('zsClose').onclick = closeSheet;
+      $('zsLog').onclick = () => (here.items.length === 1 ? recordForm(c, { item: here.items[0].i }) : recordForm(c, { preset: z.name }));
+      body.querySelectorAll('[data-item]').forEach((li) => { li.onclick = () => itemSheet(li.dataset.item); });
+      body.querySelectorAll('[data-rec]').forEach((r) => { r.onclick = () => recordSheet(r.dataset.rec); });
+    });
+  }
   const closedGroups = new Set(); // systems you collapsed
   function render() {
     const el = $('carRoot'); if (!el) return;
@@ -400,10 +467,11 @@ window.UpkeepCar = function (api) {
       ${healthHTML(c, its)}
       <div class="seg seg-wide">
         <button class="chip ${view === 'maint' ? 'on' : ''}" data-view="maint">🔧 Maintenance</button>
+        <button class="chip ${view === 'map' ? 'on' : ''}" data-view="map">🗺 Map</button>
         <button class="chip ${view === 'fuel' ? 'on' : ''}" data-view="fuel">⛽ Fuel</button>
         <button class="chip ${view === 'records' ? 'on' : ''}" data-view="records">🧾 Records</button>
       </div>
-      ${view === 'fuel' ? fuelHTML(c) : view === 'records' ? recordsHTML(c) : `
+      ${view === 'map' ? mapHTML(c) : view === 'fuel' ? fuelHTML(c) : view === 'records' ? recordsHTML(c) : `
       <div class="card">
         <div class="water-head"><h2>Maintenance</h2><button class="linkbtn" id="carAddItem" style="margin:0">+ Add item</button></div>
         ${its.length ? GROUPS.map((g) => {
@@ -435,7 +503,10 @@ window.UpkeepCar = function (api) {
     $('carOdo').onclick = () => odoSheet(c);
     if ($('carAddItem')) $('carAddItem').onclick = () => templateSheet(c);
     $('carFuelAdd').onclick = () => fuelForm(c);
-    el.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => { view = b.dataset.view; render(); }; });
+    el.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => { view = b.dataset.view; if (view !== 'map') mapFocus = null; render(); }; });
+    el.querySelectorAll('.carmap [data-z], [data-zone]').forEach((g) => { g.onclick = (e) => { e.stopPropagation(); if (g.closest('.health')) { view = 'map'; mapFocus = null; render(); return; } zoneSheet(c, g.dataset.z || g.dataset.zone); }; });
+    el.querySelectorAll('[data-healthmap]').forEach((b) => { b.onclick = () => { view = 'map'; mapFocus = null; render(); setTimeout(() => { const m = document.querySelector('#carRoot .map-wrap'); if (m) m.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50); }; });
+    if ($('mapClear')) $('mapClear').onclick = () => { mapFocus = null; render(); };
     el.querySelectorAll('[data-period]').forEach((b) => { b.onclick = () => { period = b.dataset.period; render(); }; });
     el.querySelectorAll('[data-sort]').forEach((b) => { b.onclick = () => { lbSort = b.dataset.sort; render(); }; });
     el.querySelectorAll('[data-fill]').forEach((r) => { r.onclick = () => fuelForm(c, r.dataset.fill); });
@@ -450,8 +521,11 @@ window.UpkeepCar = function (api) {
     if (!its.length) return '';
     if (!bad.length) return `<div class="card health ok"><b>✅ All ${its.length} parts OK</b><span class="muted small"> at ${fmtKm(currentKm(c))}</span></div>`;
     const ov = bad.filter((x) => x.info.status === 'overdue').length;
+    const st = {}; bad.forEach(({ i, info }) => zonesOfItem(i).forEach((z) => { if (!st[z] || RANK[info.status] > RANK[st[z]]) st[z] = info.status; }));
     return `<div class="card health ${ov ? 'overdue' : 'soon'}">
-      <b>${ov ? '🔴' : '🟠'} ${ov ? ov + ' overdue' : ''}${ov && bad.length - ov ? ' · ' : ''}${bad.length - ov ? bad.length - ov + ' due soon' : ''}</b>
+      <div class="health-top"><div><b>${ov ? '🔴' : '🟠'} ${ov ? ov + ' overdue' : ''}${ov && bad.length - ov ? ' · ' : ''}${bad.length - ov ? bad.length - ov + ' due soon' : ''}</b>
+      ${MAP && Object.keys(st).length ? '<button class="linkbtn left" data-healthmap="1" style="margin:4px 0 0">🗺 Where are these parts?</button>' : ''}</div>
+</div>
       <ul class="carlist">${bad.slice(0, 5).map(({ i, info }) => `
         <li class="caritem ${info.status}" data-item="${i.id}"><span class="ci-icon">${i.icon || '🔧'}</span>
           <span class="ci-main"><b>${esc(i.name)}${affectsFuel(i) ? ' <span class="fueltag">⛽</span>' : ''}</b><span class="muted small">${dueText(info)}</span>${wearBar(wear(i, c), info.status)}</span></li>`).join('')}</ul>
@@ -660,6 +734,7 @@ window.UpkeepCar = function (api) {
     sheet(`
       <div class="sheet-icon">${item.icon || '🔧'}</div><h2>${esc(item.name)}</h2>
       <p class="muted">${dueText(info)}</p>
+      ${miniMapHTML(zonesOfItem(item))}
       ${whyFor(item) ? `<p class="small">${affectsFuel(item) ? '⛽ ' : ''}${esc(whyFor(item))}</p>` : ''}
       ${/pms|preventive/i.test(item.name) ? '<p class="small muted">Logging a PMS also resets Change oil and Oil filter (untick them if they weren\'t done).</p>' : ''}
       ${isLto(item) ? (() => {
@@ -1102,7 +1177,7 @@ window.UpkeepCar = function (api) {
       <span class="ci-icon">${r.icon || G(groupOf(r)).icon}</span>
       <span class="ci-main"><b>${esc(r.name)}</b>
         <span class="muted small">${fmtDate(r.t)}${r.km ? ' · ' + fmtKm(r.km) : ''}${r.shop ? ' · ' + esc(r.shop) : ''}</span>
-        <span>${warrantyChip(wi)}${n ? ` <span class="chip-s">📎 ${n}</span>` : ''}</span></span>
+        <span>${warrantyChip(wi)}${n ? ` <span class="chip-s">📎 ${n}</span>` : ''}${(() => { const z = zonesOfRec(r); return z.length && MAP ? ` <span class="chip-s">📍 ${esc(MAP.zone(z[0]).name)}${z.length > 1 ? ' +' + (z.length - 1) : ''}</span>` : ''; })()}</span></span>
       <span class="rec-cost">${r.cost ? peso(r.cost) : ''}</span></li>`;
   }
 
@@ -1214,10 +1289,10 @@ window.UpkeepCar = function (api) {
   const PMS_INCLUDES = ['change oil', 'oil filter', 'engine oil level check']; // ticked by default when you log a PMS
   const idsOfRec = (h) => h.itemIds || (h.itemId ? [h.itemId] : []);
 
-  function recordForm(c, { item, rec }) {
+  function recordForm(c, { item, rec, preset }) {
     const its = itemsOf(c);
     const r = rec ? JSON.parse(JSON.stringify(rec)) : {
-      group: item ? groupOf(item) : 'other', name: item ? item.name : '', itemId: item ? item.id : '', t: Date.now(), km: currentKm(c) || '',
+      group: item ? groupOf(item) : preset ? groupOf({ name: preset }) : 'other', name: item ? item.name : preset || '', itemId: item ? item.id : '', t: Date.now(), km: currentKm(c) || '',
       parts: item && isLto(item) ? [{ name: 'LTO registration fee', cost: '' }, { name: 'CTPL insurance', cost: '' }, { name: 'Emission test', cost: '' }] : [],
       labor: '', laborWm: 0, shop: '', notes: '', receipts: [], costMode: 'items', total: '',
     };
@@ -1259,6 +1334,7 @@ window.UpkeepCar = function (api) {
           ${wSelect('id="rfLaborW"', r.laborWm)}
         </div>
         ${r.costMode === 'items' ? '<label>Total<input id="rfTotal" readonly value="" /></label>' : ''}
+        <div id="rfMap"></div>
         <label>Shop / mechanic<input id="rfShop" value="${esc(r.shop || '')}" placeholder="optional" /></label>
         <label>Receipts</label>
         <div class="thumbs" id="rfThumbs">${thumbsHTML(r.receipts, true)}
@@ -1290,6 +1366,9 @@ window.UpkeepCar = function (api) {
         if ($('rfTotal')) $('rfTotal').value = t ? peso(t) : ''; return t;
       };
       total();
+      const paintMap = () => { grab(); const box = $('rfMap'); if (!box) return; const z = zonesOfRec(r); box.innerHTML = z.length ? '<label>Where on the van <span class="muted small">— from the items above</span></label>' + miniMapHTML(z, { link: false }) : ''; };
+      paintMap();
+      body.querySelectorAll('[data-pn], #rfName').forEach((x) => x.addEventListener('input', paintMap));
       body.querySelectorAll('[data-pc], #rfLabor').forEach((x) => { x.oninput = total; });
       body.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { grab(); if (b.dataset.mode === 'total' && !r.total) { const t = r.parts.reduce((a, p) => a + (Number(p.cost) || 0), 0) + (Number(r.labor) || 0); r.total = t || ''; } r.costMode = b.dataset.mode; draw(); }; });
       $('rfGroup').onchange = () => { grab(); draw(); };
@@ -1353,6 +1432,7 @@ window.UpkeepCar = function (api) {
     sheet(`
       <div class="sheet-icon">${r.icon || G(groupOf(r)).icon}</div><h2>${esc(r.name)}</h2>
       <p class="muted">${G(groupOf(r)).name} · ${fmtDate(r.t)}${r.km ? ' · ' + fmtKm(r.km) : ''}${r.shop ? ' · ' + esc(r.shop) : ''}</p>
+      ${miniMapHTML(zonesOfRec(r))}
       ${(() => {
         const ws = warrantiesOf(r, c); const wFor = (label) => ws.find((w) => w.label === label);
         const row = (name, cost, w) => `<li><span>${esc(name)}${w ? `<br><span class="small ${w.expired ? 'miss' : w.soon ? '' : 'good-c'}">🛡 ${w.months ? w.months + ' mo · ' : ''}${w.text}</span>` : ''}</span><span>${cost ? peso(cost) : ''}</span></li>`;

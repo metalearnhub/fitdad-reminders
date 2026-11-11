@@ -304,3 +304,47 @@ details.grp .carlist { margin: 0 0 6px 6px; }
 .itemrow.labor .lbl { flex: 1; font-size: 14px; color: var(--muted); font-weight: 600; }
 .itemrow.labor { padding-top: 6px; border-top: 1px dashed var(--line); margin-top: 4px; }
 .x2 { height: 42px; font-size: 18px; }
+
+/* ---------- Car map (APV x-ray) ---------- */
+.carmap { display: block; width: 100%; max-width: 340px; height: auto; margin: 0 auto; touch-action: manipulation; }
+.carmap .m-body { fill: #141922; stroke: #4B5565; stroke-width: 2; }
+.carmap .m-hood { stroke: #2E3542; stroke-width: 1.2; fill: none; stroke-dasharray: 3 3; }
+.carmap .m-seat { fill: #1C222C; stroke: #2E3542; stroke-width: 1; }
+.carmap .m-lbl { fill: #5D6878; font-size: 7px; text-anchor: middle; font-weight: 700; letter-spacing: .5px; pointer-events: none; }
+.carmap .z { cursor: pointer; }
+.carmap .z > * { fill: #232A35; stroke: #4B5565; stroke-width: 1.2; transition: fill .2s, stroke .2s, opacity .2s; }
+.carmap .z.zs > path { fill: none; stroke-width: 3; }
+.carmap .z.zs > rect { fill: #232A35; }
+.carmap .z.zu > * { fill: rgba(35, 42, 53, .55); stroke-dasharray: 4 3; }
+.carmap .z.zr > circle { fill: none; stroke-width: 2.5; }
+.carmap .z > line { stroke: #6B7585; }
+.carmap .z-ok > * { fill: rgba(52, 211, 153, .35); stroke: var(--stand); }
+.carmap .z-soon > * { fill: rgba(245, 158, 11, .45); stroke: var(--amber); }
+.carmap .z-overdue > * { fill: rgba(248, 113, 113, .5); stroke: var(--danger); }
+.carmap .z-rec > * { fill: rgba(56, 189, 248, .3); stroke: var(--water); }
+.carmap .z.zs.z-ok > path, .carmap .z.zs.z-soon > path, .carmap .z.zs.z-overdue > path, .carmap .z.zs.z-rec > path, .carmap .z.zr > circle { fill: none; }
+.carmap .z > line { fill: none; }
+.carmap .z-ok > line { stroke: var(--stand); } .carmap .z-soon > line { stroke: var(--amber); } .carmap .z-overdue > line { stroke: var(--danger); } .carmap .z-rec > line { stroke: var(--water); }
+.carmap path.m-body.z-ok { stroke: var(--stand); } .carmap path.m-body.z-soon { stroke: var(--amber); } .carmap path.m-body.z-overdue { stroke: var(--danger); } .carmap path.m-body.z-rec { stroke: var(--water); }
+.carmap .z-overdue > *, .carmap .z-soon > * { animation: zpulse 1.6s ease-in-out infinite; }
+.carmap.focus .z:not(.lit) > *, .carmap.focus .m-seat { opacity: .22; animation: none; }
+.carmap.focus .z.lit > * { fill: rgba(251, 191, 36, .55); stroke: #FBBF24; stroke-width: 2; animation: zpulse 1.2s ease-in-out infinite; opacity: 1; }
+.carmap.focus .z.lit.zs > path, .carmap.focus .z.lit.zr > circle, .carmap.focus .z.lit > line { fill: none; stroke-width: 3.5; }
+.carmap.focus path.m-body.lit { stroke: #FBBF24; stroke-width: 3; }
+.carmap .z.sel > * { stroke: #fff !important; stroke-width: 2.2; }
+@keyframes zpulse { 50% { opacity: .55; } }
+.map-wrap { background: #10141B; border: 1px solid var(--line); border-radius: 14px; padding: 10px; margin: 8px 0 10px; }
+.map-mini .carmap { max-width: 100%; max-height: 230px; }
+.map-where { display: flex; gap: 8px; align-items: flex-start; text-align: left; font-size: 13px; margin: 6px 2px 0; }
+.map-where b { color: #FBBF24; }
+.map-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
+.map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.map-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.map-tags .chip { font-size: 12px; padding: 5px 9px; }
+.map-full { position: relative; }
+.map-full .toggle-all { position: absolute; top: 6px; right: 6px; }
+.health-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.health-map { width: 64px; flex: none; cursor: pointer; }
+.health-map .carmap { max-width: 64px; }
+.health-map .carmap .z > * { stroke-width: 2; }
+.seg-wide .chip { padding: 10px 4px; font-size: 13px; }

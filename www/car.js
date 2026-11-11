@@ -372,6 +372,44 @@ window.UpkeepCar = function (api) {
     recsOf(c).forEach((r) => zonesOfRec(r).forEach((z) => { at(z).recs.push(r); if (!status[z]) status[z] = 'rec'; }));
     return { by, status };
   }
+  // ---------- Right parts & fluids (Suzuki APV guide) ----------
+  const SPECS = window.UpkeepApvSpecs || null;
+  const specsFor = (c) => (SPECS && c && SPECS.isApv(c.name) ? SPECS : null);
+  function specText(c, zones) {
+    const sp = specsFor(c); if (!sp) return '';
+    const hiKm = currentKm(c) >= 150000;
+    return `${c.name}${c.plate ? ' (' + c.plate + ')' : ''} — Suzuki APV 1.6 G16A, 5MT\n` + sp.forZones(zones).map(({ zone, rows }) =>
+      `\n${MAP.zone(zone).name}\n` + rows.map((r) => `• ${r.k}: ${r.v}${r.ok ? '' : ' (confirm)'}${hiKm && r.hi ? '\n  High mileage: ' + r.hi : ''}`).join('\n')).join('\n');
+  }
+  function specsHTML(c, zones, { title = true } = {}) {
+    const sp = specsFor(c); if (!sp || !sp.has(zones)) return '';
+    const hiKm = currentKm(c) >= 150000;
+    const groups = sp.forZones(zones);
+    return `<div class="specs">
+      ${title ? `<div class="specs-head"><b>🔩 Right parts for your APV</b><button class="linkbtn" data-copyspec="${zones.join(',')}" style="margin:0">📋 Copy for mechanic</button></div>` : ''}
+      ${groups.map(({ zone, rows }) => `${groups.length > 1 ? `<div class="spec-part">${MAP.zone(zone).icon} ${esc(MAP.zone(zone).name)}</div>` : ''}
+        ${rows.map((r) => `<div class="spec-row"><span class="spec-k">${esc(r.k)}</span><span class="spec-v">${esc(r.v)} <span class="spec-tag ${r.ok ? 'ok' : 'chk'}">${r.ok ? '✔ fits APV' : '⚠ confirm'}</span>${hiKm && r.hi ? `<span class="spec-hi">🕰 High mileage: ${esc(r.hi)}</span>` : ''}</span></div>`).join('')}`).join('')}
+    </div>`;
+  }
+  function specsGuideHTML(c) {
+    const sp = specsFor(c); if (!sp) return '';
+    const zones = Object.keys(sp.S).filter((z) => MAP.zone(z)); // guide order: engine first, papers last
+    return `<div class="card">
+      <div class="water-head"><h2>📘 APV parts & fluids guide</h2><button class="linkbtn" data-copyspec="${zones.join(',')}" style="margin:0">📋 Copy all</button></div>
+      <p class="muted small" style="margin-top:0">For a 2005–2018 Suzuki APV 1.6 (G16A, 5-speed manual). <b>✔ fits APV</b> = matches parts-maker fitment / Suzuki engine data. <b>⚠ confirm</b> = typical, so check the label, the old part, or ask the shop before buying.${currentKm(c) >= 150000 ? ' 🕰 High-mileage tips are shown because your van is past 150,000 km.' : ''}</p>
+      ${zones.map((z) => `<details class="grp"><summary><span>${MAP.zone(z).icon} <b>${esc(MAP.zone(z).name)}</b></span><span class="muted small">${sp.S[z].length}</span></summary>${specsHTML(c, [z], { title: false })}</details>`).join('')}
+    </div>`;
+  }
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); return true; } catch (_) {
+      try { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (__) { return false; }
+    }
+  }
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest && e.target.closest('[data-copyspec]'); if (!b) return;
+    e.stopPropagation(); const c = car(); if (!c) return;
+    toast((await copyText(specText(c, b.dataset.copyspec.split(',')))) ? '📋 Copied — paste it in Messenger/Viber to your mechanic' : 'Couldn\'t copy on this phone');
+  });
   function mapLabel(c) { return /apv/i.test(c && c.name || '') ? 'Suzuki APV · top view' : 'Van layout (Suzuki APV) · top view'; }
   function miniMapHTML(zs, { link = true } = {}) {
     if (!MAP || !zs.length) return '';
@@ -395,7 +433,7 @@ window.UpkeepCar = function (api) {
       <div class="map-wrap">${MAP.svg({ status, focus, zoom: false, labels: true })}</div>
       ${attention.length ? `<h3 style="margin:10px 0 4px">Needs attention</h3><div class="map-tags">${attention.map((z) => `<button class="chip" data-zone="${z}"><span class="ci-dot ${status[z]}" style="display:inline-block;margin-right:6px;background:${status[z] === 'overdue' ? 'var(--danger)' : 'var(--amber)'}"></span>${MAP.zone(z).icon} ${esc(MAP.zone(z).name)}</button>`).join('')}</div>` : ''}
       <p class="muted small" style="margin-bottom:0">${tracked} of ${MAP.ZONES.length} parts have a schedule or record. Positions are approximate — drawn for finding parts, not a factory diagram.</p>
-    </div>`;
+    </div>${specsGuideHTML(c)}`;
   }
   function zoneSheet(c, zid) {
     const z = MAP && MAP.zone(zid); if (!z) return;
@@ -404,6 +442,7 @@ window.UpkeepCar = function (api) {
     sheet(`
       <div class="sheet-icon">${z.icon}</div><h2>${esc(z.name)}</h2>
       ${miniMapHTML([zid], { link: false })}
+      ${specsHTML(c, [zid])}
       <h3 style="text-align:left;margin:12px 0 0">Schedules</h3>
       <ul class="carlist" style="text-align:left">${here.items.map(({ i, info }) => `
         <li class="caritem ${info.status}" data-item="${i.id}"><span class="ci-icon">${i.icon || '🔧'}</span>
@@ -735,6 +774,7 @@ window.UpkeepCar = function (api) {
       <div class="sheet-icon">${item.icon || '🔧'}</div><h2>${esc(item.name)}</h2>
       <p class="muted">${dueText(info)}</p>
       ${miniMapHTML(zonesOfItem(item))}
+      ${specsHTML(c, zonesOfItem(item))}
       ${whyFor(item) ? `<p class="small">${affectsFuel(item) ? '⛽ ' : ''}${esc(whyFor(item))}</p>` : ''}
       ${/pms|preventive/i.test(item.name) ? '<p class="small muted">Logging a PMS also resets Change oil and Oil filter (untick them if they weren\'t done).</p>' : ''}
       ${isLto(item) ? (() => {
@@ -1366,7 +1406,7 @@ window.UpkeepCar = function (api) {
         if ($('rfTotal')) $('rfTotal').value = t ? peso(t) : ''; return t;
       };
       total();
-      const paintMap = () => { grab(); const box = $('rfMap'); if (!box) return; const z = zonesOfRec(r); box.innerHTML = z.length ? '<label>Where on the van <span class="muted small">— from the items above</span></label>' + miniMapHTML(z, { link: false }) : ''; };
+      const paintMap = () => { grab(); const box = $('rfMap'); if (!box) return; const z = zonesOfRec(r); box.innerHTML = z.length ? '<label>Where on the van <span class="muted small">— from the items above</span></label>' + miniMapHTML(z, { link: false }) + specsHTML(c, z) : ''; };
       paintMap();
       body.querySelectorAll('[data-pn], #rfName').forEach((x) => x.addEventListener('input', paintMap));
       body.querySelectorAll('[data-pc], #rfLabor').forEach((x) => { x.oninput = total; });

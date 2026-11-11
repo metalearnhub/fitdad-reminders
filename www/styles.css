@@ -348,3 +348,15 @@ details.grp .carlist { margin: 0 0 6px 6px; }
 .health-map .carmap { max-width: 64px; }
 .health-map .carmap .z > * { stroke-width: 2; }
 .seg-wide .chip { padding: 10px 4px; font-size: 13px; }
+.specs { text-align: left; background: #10141B; border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 10px 0; }
+details.grp .specs { margin: 0 0 10px; }
+.specs-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 14px; }
+.spec-part { font-weight: 700; font-size: 13px; margin: 10px 0 2px; color: #FBBF24; }
+.spec-row { display: grid; grid-template-columns: 104px 1fr; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.spec-row:first-of-type { border-top: 0; }
+.spec-k { color: var(--muted); }
+.spec-v { line-height: 1.35; }
+.spec-tag { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 8px; margin-left: 2px; white-space: nowrap; }
+.spec-tag.ok { background: rgba(52, 211, 153, .15); color: var(--stand); }
+.spec-tag.chk { background: rgba(245, 158, 11, .15); color: var(--amber); }
+.spec-hi { display: block; margin-top: 4px; color: #FCD34D; font-size: 12px; }

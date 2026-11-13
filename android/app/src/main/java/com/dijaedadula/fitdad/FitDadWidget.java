@@ -334,6 +334,7 @@ public class FitDadWidget extends AppWidgetProvider {
             for (int vid : new int[] { R.id.w_water_block, R.id.w_progress, R.id.w_btn_water }) v.setViewVisibility(vid, fWater ? V : G);
             for (int vid : new int[] { R.id.w_stand_block, R.id.w_btn_stand, R.id.w_btn_main }) v.setViewVisibility(vid, fStand ? V : G);
             // countdown to the next reminder (the same plan the alarms use)
+            if (!fStand) v.setTextViewText(R.id.w_status, "");   // no work status in water-only mode
             v.setViewVisibility(R.id.w_next_water_block, fWater ? V : G);
             v.setViewVisibility(R.id.w_next_stand_block, fStand ? V : G);
             if (fWater) {

@@ -16,7 +16,7 @@ public class WidgetPreviewActivity extends Activity {
         root.setBackgroundColor(Color.parseColor("#3B4252"));
         float d = getResources().getDisplayMetrics().density;
         View w = FitDadWidget.build(this).apply(this, root);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams((int) (360 * d), (int) (200 * d), Gravity.CENTER);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(getResources().getDisplayMetrics().widthPixels - (int) (16 * d), (int) (190 * d), Gravity.CENTER);
         root.addView(w, lp);
         setContentView(root);
     }

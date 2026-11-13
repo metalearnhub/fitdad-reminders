@@ -411,7 +411,7 @@ public class ReminderGate extends BroadcastReceiver {
         String type = it.optString("type");
         String[][] actions;
         switch (type) {
-            case "STAND": actions = new String[][] { { "done", "Done ✓" }, { "snooze", "Snooze 5 min" }, { "endwork", "Done working" } }; break;
+            case "STAND": actions = new String[][] { { "done", "Done ✓" }, { "snooze", "Snooze 5 min" }, { "pause", "Pause" } }; break;
             case "WATER": actions = new String[][] { { "drank", "Drank a glass" }, { "snooze", "Snooze 10 min" } }; break;
             case "NUDGE": actions = new String[][] { { "start", "Start now" }, { "later", "Later" }, { "dayoff", "Day off" } }; break;
             case "CAR": actions = new String[][] { { "done", "Done — log it" }, { "snooze", "Remind tomorrow" } }; break;

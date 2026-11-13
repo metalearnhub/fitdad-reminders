@@ -21,7 +21,7 @@ public class NotifActionReceiver extends BroadcastReceiver {
     /** Buttons that can be completed without opening the app. */
     static boolean handlesInPlace(String actionId) {
         switch (actionId) {
-            case "done": case "drank": case "snooze": case "endwork": case "dayoff": case "later": return true;
+            case "done": case "drank": case "snooze": case "endwork": case "pause": case "dayoff": case "later": return true;
             default: return false;
         }
     }
@@ -45,6 +45,10 @@ public class NotifActionReceiver extends BroadcastReceiver {
                 case "endwork":
                     FitDadWidget.endWork(ctx, "notif"); ReminderGate.clearDelivered(ctx, "stand");
                     msg = "✅ Done working — stand-ups off";
+                    break;
+                case "pause":
+                    FitDadWidget.pauseWork(ctx, "notif"); ReminderGate.clearDelivered(ctx, "stand");
+                    msg = "⏸ Paused — stand-ups on hold. Tap Start when you're back";
                     break;
                 case "snooze":
                     msg = snooze(ctx, kind);

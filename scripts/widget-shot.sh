@@ -15,6 +15,11 @@ adb shell am start -n $P/.WidgetPreviewActivity; sleep 4
 adb exec-out screencap -p > smoke/w1-water-and-stand.png
 sleep 5; adb exec-out screencap -p > smoke/w1b-5s-later.png
 adb shell run-as $P cat shared_prefs/upkeep_sched.xml > smoke/sched.txt
+adb shell input keyevent KEYCODE_HOME; sleep 1
+adb shell am broadcast -n $P/.FitDadWidget -a $P.WIDGET_PAUSE >/dev/null; sleep 2
+adb shell am start -n $P/.WidgetPreviewActivity; sleep 4
+adb exec-out screencap -p > smoke/w3-paused.png
+adb shell run-as $P cat shared_prefs/CapacitorStorage.xml | grep -o 'status&quot;:&quot;[a-z]*' | head -3 > smoke/status-after-pause.txt
 # water only: switch Stand-ups off in the saved settings
 adb shell am force-stop $P; sleep 1
 adb shell run-as $P cat shared_prefs/CapacitorStorage.xml > /tmp/cs.xml

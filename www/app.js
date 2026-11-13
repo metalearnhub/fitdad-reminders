@@ -170,7 +170,7 @@
 
       await LN.registerActionTypes({
         types: [
-          { id: 'STAND', actions: [{ id: 'done', title: 'Done ✓' }, { id: 'snooze', title: 'Snooze 5 min' }, { id: 'endwork', title: 'Done working' }] },
+          { id: 'STAND', actions: [{ id: 'done', title: 'Done ✓' }, { id: 'snooze', title: 'Snooze 5 min' }, { id: 'pause', title: 'Pause' }] },
           { id: 'WATER', actions: [{ id: 'drank', title: 'Drank a glass' }, { id: 'snooze', title: 'Snooze 10 min' }] },
           { id: 'NUDGE', actions: [{ id: 'start', title: 'Start now' }, { id: 'later', title: 'Later' }, { id: 'dayoff', title: 'Day off' }] },
           { id: 'CAR', actions: [{ id: 'done', title: 'Done — log it' }, { id: 'snooze', title: 'Remind tomorrow' }] },
@@ -337,6 +337,7 @@
     if (k === 'stand') {
       if (a === 'snooze') await snooze('stand', 5);
       else if (a === 'done') toast('Nice. Stand-up logged.');
+      else if (a === 'pause') { if (today().status === 'active') pauseSession(); }
       else if (a === 'endwork') { if (['active', 'paused'].includes(today().status)) endSession(); await save(); render(); await reschedule(); showWorkSummary(); return; }
     } else if (k === 'water') {
       if (a === 'snooze') await snooze('water', 10);
@@ -725,7 +726,7 @@
       <p class="small">Reminders answered: <b>${t.answered}/${t.reminders}</b>${t.missed ? ` · <span class="miss">${t.missed} missed</span>` : ''}</p>
       <div class="s-only">${workSessionsHTML()}</div>
       <p class="muted small">${t.fromNotif + tw.log.filter((e) => e.k === 'water' && e.src === 'notif' && tw.key !== t.key).length} confirmed from notifications · ${t.snoozes + (tw.key !== t.key ? tw.snoozes : 0)} snoozed · ${t.skips + (tw.key !== t.key ? tw.skips : 0)} skipped</p>`;
-    const names = { dayoff: '🏖 Day off', endwork: '✅ Done working', water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
+    const names = { dayoff: '🏖 Day off', endwork: '✅ Done working', pause: '⏸ Paused', water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
     const evs = (tw.key === t.key ? t.log : tw.log.concat(t.log)).slice().sort((a, b) => b.t - a.t).slice(0, 30);
     $('statTimeline').innerHTML = evs.length
       ? evs.map((e) => `<li><span>${names[e.k] || e.k}</span><span class="muted">${fmtTime(new Date(e.t))}${e.src === 'notif' ? ' · 🔔' : ''}</span></li>`).join('')

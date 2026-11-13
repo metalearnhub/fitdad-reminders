@@ -29,6 +29,7 @@ public class FitDadWidget extends AppWidgetProvider {
     static final String ACTION_WATER = "com.dijaedadula.fitdad.WIDGET_WATER";
     static final String ACTION_STAND = "com.dijaedadula.fitdad.WIDGET_STAND";
     static final String ACTION_ENDWORK = "com.dijaedadula.fitdad.WIDGET_ENDWORK";
+    static final String ACTION_PAUSE = "com.dijaedadula.fitdad.WIDGET_PAUSE";
     static final String PREFS = "CapacitorStorage";
     static final String KEY = "fitdad";
     static final String KEY_WEEK = "fitdad_week";
@@ -47,6 +48,12 @@ public class FitDadWidget extends AppWidgetProvider {
             ReminderGate.clearDelivered(ctx, ACTION_WATER.equals(a) ? "water" : "stand");
             updateAll(ctx);
             WidgetBridgePlugin.emitChanged();
+        } else if (ACTION_PAUSE.equals(a)) {
+            pauseWork(ctx, "widget");
+            ReminderGate.clearDelivered(ctx, "stand");
+            updateAll(ctx);
+            WidgetBridgePlugin.emitChanged();
+            android.widget.Toast.makeText(ctx.getApplicationContext(), "⏸ Paused — stand-ups on hold. Tap Start when you're back", android.widget.Toast.LENGTH_SHORT).show();
         } else if (ACTION_ENDWORK.equals(a)) {
             endWork(ctx, "widget");
             ReminderGate.clearDelivered(ctx, "stand");
@@ -225,6 +232,26 @@ public class FitDadWidget extends AppWidgetProvider {
      * "Done working": close the work session (it's recorded for Stats) and stop stand-up alarms.
      * Water reminders keep running until bedtime.
      */
+    static void pauseWork(Context ctx, String src) {
+        try {
+            JSONObject root = load(ctx);
+            JSONObject r = today(root);
+            if (!"active".equals(r.optString("status"))) return;
+            long now = System.currentTimeMillis();
+            if (!r.has("segments")) r.put("segments", new JSONArray());
+            if (r.has("segStart") && !r.isNull("segStart")) {
+                JSONArray seg = new JSONArray(); seg.put(r.getLong("segStart")); seg.put(now);
+                r.getJSONArray("segments").put(seg);
+                r.put("segStart", JSONObject.NULL);
+            }
+            r.put("status", "paused");
+            r.put("pausedAt", now);
+            JSONObject ev = new JSONObject(); ev.put("t", now); ev.put("k", "pause"); ev.put("src", src);
+            r.getJSONArray("log").put(ev);
+            save(ctx, root);   // stand-up alarms stay silent while paused (ReminderGate checks status)
+        } catch (Exception ignored) { }
+    }
+
     static void endWork(Context ctx, String src) {
         try {
             JSONObject root = load(ctx);
@@ -327,9 +354,10 @@ public class FitDadWidget extends AppWidgetProvider {
             v.setTextViewText(R.id.w_week, week != null ? week : "Week stats appear after you use the app");
 
             boolean idle = "idle".equals(status) || "ended".equals(status) || "off".equals(status);
-            // Not working → Start; working → "Done" ends the session right from the home screen
-            v.setTextViewText(R.id.w_btn_main, idle ? "Start" : "Done ✓");
-            v.setOnClickPendingIntent(R.id.w_btn_main, idle ? openApp(ctx, "fitdad://start", 3) : broadcast(ctx, ACTION_ENDWORK, 5));
+            // Widget only starts and pauses work — "Done working" lives in the app
+            boolean working = "active".equals(status);
+            v.setTextViewText(R.id.w_btn_main, working ? "⏸ Pause" : "▶ Start");
+            v.setOnClickPendingIntent(R.id.w_btn_main, working ? broadcast(ctx, ACTION_PAUSE, 5) : openApp(ctx, "fitdad://start", 3));
         } catch (Exception e) {
             v.setTextViewText(R.id.w_status, "Upkeep");
         }

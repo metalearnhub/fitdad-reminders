@@ -310,14 +310,14 @@ public class FitDadWidget extends AppWidgetProvider {
             v.setViewVisibility(R.id.w_next_water_block, fWater ? V : G);
             v.setViewVisibility(R.id.w_next_stand_block, fStand ? V : G);
             if (fWater) {
-                int goal = setting(root, "waterGoal", 3000);
-                if (r.optInt("water", 0) >= goal) countdown(v, R.id.w_next_water, R.id.w_next_water_txt, R.id.w_next_water_at, 0, "🎉 Goal met", "💧");
+                int wGoal = setting(root, "waterGoal", 3000);
+                if (r.optInt("water", 0) >= wGoal) countdown(v, R.id.w_next_water, R.id.w_next_water_txt, R.id.w_next_water_at, 0, "🎉 Goal met", "💧");
                 else countdown(v, R.id.w_next_water, R.id.w_next_water_txt, R.id.w_next_water_at, nextAt(ctx, r, "water"), "—", "💧");
             }
             if (fStand) {
-                String st = r.optString("status", "idle");
-                String none = "paused".equals(st) ? "Paused" : "ended".equals(st) ? "Done today" : "active".equals(st) ? "—" : "Not working";
-                countdown(v, R.id.w_next_stand, R.id.w_next_stand_txt, R.id.w_next_stand_at, "active".equals(st) ? nextAt(ctx, r, "stand") : 0, none, "🧍");
+                String ws = r.optString("status", "idle");
+                String none = "paused".equals(ws) ? "Paused" : "ended".equals(ws) ? "Done today" : "active".equals(ws) ? "—" : "Not working";
+                countdown(v, R.id.w_next_stand, R.id.w_next_stand_txt, R.id.w_next_stand_at, "active".equals(ws) ? nextAt(ctx, r, "stand") : 0, none, "🧍");
             }
             long lastStand = lastOf(r, "stand"), lastWater = lastOf(r, "water");
             agoTimer(v, R.id.w_ago_stand, fStand ? lastStand : 0, "🧍");

@@ -55,6 +55,7 @@ public class ReminderGate extends BroadcastReceiver {
         }
         saveItems(ctx, next);
         armAll(ctx, next);
+        FitDadWidget.updateAll(ctx);   // widget countdown follows the new plan
     }
 
     /** Add (or replace) a few one-off reminders, e.g. a snooze or a test. */
@@ -66,6 +67,7 @@ public class ReminderGate extends BroadcastReceiver {
             arm(ctx, it);
         }
         saveItems(ctx, all);
+        FitDadWidget.updateAll(ctx);
     }
 
     /** Re-arm everything still in the future (after reboot / app update). */
@@ -222,6 +224,7 @@ public class ReminderGate extends BroadcastReceiver {
         if (it == null) return;              // no longer planned → silent
         all.remove(String.valueOf(id));
         saveItems(ctx, all);
+        try { FitDadWidget.updateAll(ctx); } catch (Exception ignored) { } // countdown moves on to the next one
         try {
             JSONObject root = FitDadWidget.load(ctx);
             if (!stillNeeded(ctx, root, it)) return;

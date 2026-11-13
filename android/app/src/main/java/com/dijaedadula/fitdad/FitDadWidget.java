@@ -102,6 +102,48 @@ public class FitDadWidget extends AppWidgetProvider {
         v.setChronometer(viewId, base, label + " %s ago", true);
     }
 
+    /** Earliest planned main reminder of this kind that will actually ring (skips ones you've already answered). */
+    static long nextAt(Context ctx, JSONObject r, String kind) {
+        boolean water = "water".equals(kind);
+        long last = ReminderGate.lastAnswer(r.optJSONArray("log"), water ? new String[] { "water", "skip_w", "snooze_w" } : new String[] { "stand", "skip_s", "snooze_s", "endwork" });
+        JSONObject all = ReminderGate.loadItems(ctx);
+        JSONArray names = all.names();
+        long now = System.currentTimeMillis(), best = 0;
+        if (names != null) for (int i = 0; i < names.length(); i++) {
+            JSONObject it = all.optJSONObject(names.optString(i));
+            if (it == null || !kind.equals(it.optString("kind"))) continue;
+            boolean snooze = it.optBoolean("snooze", false);
+            if (it.optBoolean("follow", false) && !snooze) continue;   // follow-ups aren't "next reminder"
+            long at = it.optLong("at");
+            if (at <= now) continue;
+            long gap = it.optLong("gap", 0);
+            if (!snooze && gap > 0 && last > at - gap / 2) continue;    // will stay quiet because you just did it
+            if (best == 0 || at < best) best = at;
+        }
+        return best;
+    }
+
+    /** Big live countdown (mm:ss / h:mm:ss) to `at`; plain text when nothing is coming. */
+    static void countdown(RemoteViews v, int chrono, int txt, int atView, long at, String none, String icon) {
+        int G = android.view.View.GONE, V = android.view.View.VISIBLE;
+        if (at <= 0) {
+            v.setViewVisibility(chrono, G); v.setViewVisibility(txt, V);
+            v.setTextViewText(txt, none); v.setTextViewText(atView, icon + " next");
+            return;
+        }
+        String clock = new SimpleDateFormat("h:mm a", Locale.getDefault()).format(new java.util.Date(at));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            long base = android.os.SystemClock.elapsedRealtime() + (at - System.currentTimeMillis());
+            v.setViewVisibility(txt, G); v.setViewVisibility(chrono, V);
+            v.setChronometer(chrono, base, null, true);
+            v.setChronometerCountDown(chrono, true);
+            v.setTextViewText(atView, icon + " next · " + clock);
+        } else {
+            v.setViewVisibility(chrono, G); v.setViewVisibility(txt, V);
+            v.setTextViewText(txt, clock); v.setTextViewText(atView, icon + " next");
+        }
+    }
+
     static JSONObject today(JSONObject root) throws Exception {
         if (!root.has("days")) root.put("days", new JSONObject());
         JSONObject days = root.getJSONObject("days");
@@ -264,6 +306,19 @@ public class FitDadWidget extends AppWidgetProvider {
             int G = android.view.View.GONE, V = android.view.View.VISIBLE;
             for (int vid : new int[] { R.id.w_water_block, R.id.w_progress, R.id.w_btn_water }) v.setViewVisibility(vid, fWater ? V : G);
             for (int vid : new int[] { R.id.w_stand_block, R.id.w_btn_stand, R.id.w_btn_main }) v.setViewVisibility(vid, fStand ? V : G);
+            // countdown to the next reminder (the same plan the alarms use)
+            v.setViewVisibility(R.id.w_next_water_block, fWater ? V : G);
+            v.setViewVisibility(R.id.w_next_stand_block, fStand ? V : G);
+            if (fWater) {
+                int goal = setting(root, "waterGoal", 3000);
+                if (r.optInt("water", 0) >= goal) countdown(v, R.id.w_next_water, R.id.w_next_water_txt, R.id.w_next_water_at, 0, "🎉 Goal met", "💧");
+                else countdown(v, R.id.w_next_water, R.id.w_next_water_txt, R.id.w_next_water_at, nextAt(ctx, r, "water"), "—", "💧");
+            }
+            if (fStand) {
+                String st = r.optString("status", "idle");
+                String none = "paused".equals(st) ? "Paused" : "ended".equals(st) ? "Done today" : "active".equals(st) ? "—" : "Not working";
+                countdown(v, R.id.w_next_stand, R.id.w_next_stand_txt, R.id.w_next_stand_at, "active".equals(st) ? nextAt(ctx, r, "stand") : 0, none, "🧍");
+            }
             long lastStand = lastOf(r, "stand"), lastWater = lastOf(r, "water");
             agoTimer(v, R.id.w_ago_stand, fStand ? lastStand : 0, "🧍");
             agoTimer(v, R.id.w_ago_water, fWater ? lastWater : 0, "💧");

@@ -1,0 +1,1 @@
+features&quot;: {&quot;water&quot;: true, &quot;stand&quot;: false, &quot;car&quot;: true

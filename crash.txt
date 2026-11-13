@@ -1,0 +1,1 @@
+11-13 14:13:52.160   960   960 I AndroidRuntime: VM exiting with result code 0, cleanup skipped.

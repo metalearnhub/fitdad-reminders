@@ -30,6 +30,7 @@
             </intent-filter>
 
         </activity>
+        <activity android:name=".WidgetPreviewActivity" android:exported="false" android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
 
         <receiver android:name=".FitDadWidget" android:exported="true" android:label="@string/app_name">
             <intent-filter>

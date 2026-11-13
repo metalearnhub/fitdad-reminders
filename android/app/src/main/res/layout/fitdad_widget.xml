@@ -21,8 +21,8 @@
             <LinearLayout android:id="@+id/w_water_block" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
                 <TextView android:id="@+id/w_water" android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="0.00 / 3.00 L" android:textColor="#38BDF8" android:textStyle="bold" android:textSize="20sp" />
-                <TextView android:id="@+id/w_water_sub" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Glass 1 of 12" android:textColor="#8B95A5" android:textSize="11sp" android:maxLines="1" />
+                <TextView android:id="@+id/w_water_sub" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="Glass 1 of 12" android:textColor="#8B95A5" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:layout_marginEnd="6dp" />
             </LinearLayout>
             <LinearLayout android:id="@+id/w_stand_block" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="end">
                 <TextView android:id="@+id/w_stands" android:layout_width="wrap_content" android:layout_height="wrap_content"

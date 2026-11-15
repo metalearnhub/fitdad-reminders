@@ -155,14 +155,7 @@
         if (ex && ex.exact_alarm && ex.exact_alarm !== 'granted') await LN.changeExactNotificationSetting();
       } catch (_) { /* older Android: not needed */ }
 
-      await LN.createChannel({
-        id: CH_ALARM, name: 'Stand-up & nudges', description: 'Stand-up alarms and start-your-day nudges',
-        importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#F59E0B', sound: 'fitdad_alarm.wav',
-      });
-      await LN.createChannel({
-        id: CH_WATER, name: 'Water reminders', description: 'Drink-water reminders and check-ins',
-        importance: 5, visibility: 1, vibration: true, sound: 'fitdad_water.wav',
-      });
+      // stand-up & water channels (with their vibration patterns) are created natively
       await LN.createChannel({
         id: CH_CAR, name: 'Car care', description: 'Car maintenance due dates and odometer reminders',
         importance: 4, visibility: 1, vibration: true,

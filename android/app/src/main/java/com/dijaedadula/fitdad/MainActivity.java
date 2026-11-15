@@ -20,6 +20,7 @@ public class MainActivity extends BridgeActivity {
         if (savedInstanceState == null) recordNotificationAction(getIntent());
         super.onCreate(savedInstanceState);
         cancelLegacyAlarms();
+        ReminderGate.safeChannel(this, "fitdad-alarm");   // make sure the reminder channels (with their vibration patterns) exist
     }
 
     @Override

@@ -66,7 +66,7 @@ PY
 }
 
 echo "---- our channels (must be usage=USAGE_NOTIFICATION, bypassDnd=false) ----" | tee -a $R
-adb shell dumpsys notification | grep -oE "NotificationChannel\{mId='(fitdad-alarm|fitdad-water|upkeep-car|default)'[^}]*" | grep -oE "mId='[^']*'|mBypassDnd=[a-z]*|mAudioAttributes=[^,]*, ?usage=[A-Z_]*|usage=[A-Z_]*" | paste -sd' ' | tee -a $R
+adb shell dumpsys notification | grep -oE "NotificationChannel\{mId='(upkeep-stand-v2|upkeep-water-v2|fitdad-alarm|fitdad-water|upkeep-car|default)'[^}]*" | grep -oE "mId='[^']*'|mBypassDnd=[a-z]*|mAudioAttributes=[^,]*, ?usage=[A-Z_]*|usage=[A-Z_]*" | paste -sd' ' | tee -a $R
 
 setring false
 ringer silent;  adb shell cmd notification set_dnd off >/dev/null 2>&1
@@ -87,5 +87,7 @@ fire "D (control): toggle ON + ring volume 0, water -> expect alarm-stream ring 
 ringer normal
 echo "legacy cleanup: $(adb logcat -d -b main | grep -m1 'legacy library alarms')" | tee -a $R
 echo "---- channels after test ----" | tee -a $R
-adb shell dumpsys notification | grep -oE "NotificationChannel\{mId='(fitdad-alarm|fitdad-water|upkeep-car)'[^}]*" | grep -oE "mId='[^']*'|mBypassDnd=[a-z]*|usage=[A-Z_]*" | paste -sd' ' | tee -a $R
+adb shell dumpsys notification | grep -oE "NotificationChannel\{mId='(upkeep-stand-v2|upkeep-water-v2|fitdad-alarm|fitdad-water|upkeep-car)'[^}]*" | grep -oE "mId='[^']*'|mBypassDnd=[a-z]*|mVibration=\[[0-9, ]*\]|usage=[A-Z_]*" | paste -sd' ' | tee -a $R
+echo "posted notification channels:" | tee -a $R
+adb shell dumpsys notification --noredact | grep -oE "Notification\(channel=[a-z0-9-]*" | sort | uniq -c | tee -a $R
 exit 0

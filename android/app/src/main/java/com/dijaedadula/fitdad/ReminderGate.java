@@ -265,7 +265,7 @@ public class ReminderGate extends BroadcastReceiver {
             // vibrate (Silent mode turns off notification vibration)
             try {
                 android.os.Vibrator v = (android.os.Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
-                long[] pattern = { 0, 400, 200, 400, 200, 600 };
+                long[] pattern = vibFor(it.optString("kind"));
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) v.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1), attrs);
                 else v.vibrate(pattern, -1);
             } catch (Exception ignored) { }
@@ -405,31 +405,46 @@ public class ReminderGate extends BroadcastReceiver {
     // Only our own three channels are used. Each must play as a normal NOTIFICATION sound (muted by Silent,
     // blocked by DND) — never as an alarm and never bypassing DND. The only way a reminder sounds on Silent is
     // ringThroughSilent(), and that only runs when "Ring even on Silent" is ON.
-    static final String[][] CHANNELS = {
-        { "fitdad-alarm", "Stand-up & nudges", "fitdad_alarm" },
-        { "fitdad-water", "Water reminders", "fitdad_water" },
-        { "upkeep-car", "Car care", null },
+    // Vibration "morse": dot = short buzz, dash = long buzz
+    static final int DOT = 130, DASH = 480, IN = 120, GAP = 420;
+    //  water:    . . —   . . —   . . —
+    static final long[] VIB_WATER = { 0, DOT, IN, DOT, IN, DASH, GAP, DOT, IN, DOT, IN, DASH, GAP, DOT, IN, DOT, IN, DASH };
+    //  stand-up: . .   . .   . . —
+    static final long[] VIB_STAND = { 0, DOT, IN, DOT, GAP, DOT, IN, DOT, GAP, DOT, IN, DOT, IN, DASH };
+    static long[] vibFor(String kind) { return ("water".equals(kind) || "check".equals(kind)) ? VIB_WATER : VIB_STAND; }
+
+    // Items say "fitdad-alarm" / "fitdad-water"; the real channels carry the vibration patterns.
+    // (Android locks a channel's vibration once created, hence new ids; the old channels are removed.)
+    // { logical id, real channel id, name, sound, pattern }
+    static final Object[][] CHANNELS = {
+        { "fitdad-alarm", "upkeep-stand-v2", "Stand-up & nudges", "fitdad_alarm", VIB_STAND },
+        { "fitdad-water", "upkeep-water-v2", "Water reminders", "fitdad_water", VIB_WATER },
+        { "upkeep-car", "upkeep-car", "Car care", null, null },
     };
+    static final String[] OLD_CHANNELS = { "fitdad-alarm", "fitdad-water" };
+
     static String safeChannel(Context ctx, String id) {
-        boolean known = false;
-        for (String[] c : CHANNELS) if (c[0].equals(id)) known = true;
-        if (!known) id = "fitdad-alarm";     // e.g. the library's "default" channel plays on the alarm stream — never use it
+        Object[] use = CHANNELS[0];     // unknown (e.g. the library's "default", which plays on the alarm stream) → stand-up channel
+        for (Object[] c : CHANNELS) if (c[0].equals(id) || c[1].equals(id)) use = c;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-                for (String[] c : CHANNELS) {
-                    android.app.NotificationChannel ch = nm.getNotificationChannel(c[0]);
+                for (String old : OLD_CHANNELS) if (nm.getNotificationChannel(old) != null) nm.deleteNotificationChannel(old);
+                for (Object[] c : CHANNELS) {
+                    String cid = (String) c[1];
+                    android.app.NotificationChannel ch = nm.getNotificationChannel(cid);
                     boolean bad = ch != null && (ch.canBypassDnd() || (ch.getAudioAttributes() != null
                             && ch.getAudioAttributes().getUsage() != android.media.AudioAttributes.USAGE_NOTIFICATION));
-                    if (bad) { nm.deleteNotificationChannel(c[0]); ch = null; android.util.Log.w("UpkeepGate", "rebuilt channel " + c[0] + " to follow Silent"); }
+                    if (bad) { nm.deleteNotificationChannel(cid); ch = null; android.util.Log.w("UpkeepGate", "rebuilt channel " + cid + " to follow Silent"); }
                     if (ch == null) {
-                        ch = new android.app.NotificationChannel(c[0], c[1], "upkeep-car".equals(c[0]) ? NotificationManager.IMPORTANCE_HIGH : NotificationManager.IMPORTANCE_MAX);
+                        ch = new android.app.NotificationChannel(cid, (String) c[2], "upkeep-car".equals(cid) ? NotificationManager.IMPORTANCE_HIGH : NotificationManager.IMPORTANCE_MAX);
                         ch.enableVibration(true);
+                        if (c[4] != null) ch.setVibrationPattern((long[]) c[4]);
                         ch.setBypassDnd(false);
                         android.media.AudioAttributes aa = new android.media.AudioAttributes.Builder()
                                 .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
                                 .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build();
-                        android.net.Uri snd = c[2] != null ? android.net.Uri.parse("android.resource://" + ctx.getPackageName() + "/raw/" + c[2])
+                        android.net.Uri snd = c[3] != null ? android.net.Uri.parse("android.resource://" + ctx.getPackageName() + "/raw/" + c[3])
                                 : android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
                         ch.setSound(snd, aa);
                         nm.createNotificationChannel(ch);
@@ -437,7 +452,7 @@ public class ReminderGate extends BroadcastReceiver {
                 }
             } catch (Exception e) { android.util.Log.w("UpkeepGate", "channel check failed: " + e); }
         }
-        return id;
+        return (String) use[1];
     }
 
     private static void show(Context ctx, JSONObject root, JSONObject it) throws Exception {
@@ -466,6 +481,7 @@ public class ReminderGate extends BroadcastReceiver {
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setVibrate("upkeep-car".equals(it.optString("channel")) ? null : vibFor(kind))
                 .setAutoCancel(true)
                 .setContentIntent(openWith(ctx, it, "tap", id * 10));
 

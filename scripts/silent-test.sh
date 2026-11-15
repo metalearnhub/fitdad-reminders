@@ -76,10 +76,10 @@ fire "B1: toggle OFF + Do Not Disturb ON, water -> expect NO alarm-stream ring" 
 fire "B2: toggle OFF + Do Not Disturb ON, stand-up channel -> expect NO alarm-stream ring" test
 adb shell cmd notification set_dnd off >/dev/null 2>&1
 setring true
-ringer silent
-fire "C1 (control): toggle ON + SILENT, water -> expect alarm-stream ring" water
-fire "C2 (control): toggle ON + SILENT, stand-up channel -> expect alarm-stream ring" test
-ringer normal
+ringer normal; adb shell cmd notification set_dnd on >/dev/null 2>&1
+fire "C1 (control): toggle ON + Do Not Disturb, water -> expect alarm-stream ring" water
+fire "C2 (control): toggle ON + Do Not Disturb, stand-up channel -> expect alarm-stream ring" test
+ringer normal; adb shell cmd notification set_dnd off >/dev/null 2>&1
 echo "---- channels after test ----" | tee -a $R
 adb shell dumpsys notification | grep -oE "NotificationChannel\{mId='(fitdad-alarm|fitdad-water|upkeep-car)'[^}]*" | grep -oE "mId='[^']*'|mBypassDnd=[a-z]*|usage=[A-Z_]*" | paste -sd' ' | tee -a $R
 exit 0

@@ -1,0 +1,25 @@
+tz: Sun Nov 15 14:09:46 PST 2026
+T0=1794723008
+alarm-clock alarms armed: 0
+ringer: 0 (0 = silent)
+clock -> Sun Nov 15 14:41:08 PST 2026
+== +31 min (stand reminder due, not answered -> expect STAND shown)
+pkg=com.dijaedadula.fitdad id=0
+                android.title=String (Stand up 🧍)
+ringer now: 0
+11-15 14:41:08.443  6214  6214 I UpkeepGate: Do Not Disturb on — staying quiet
+	AudioAttributes: usage=USAGE_ALARM content=CONTENT_TYPE_UNKNOWN flags=0x800 tags= bundle=null forVolume: true stream: STREAM_ALARM(4)
+clock -> Sun Nov 15 14:47:08 PST 2026
+== +37 min (follow-up 5 min after an unanswered stand-up -> expect 'Did you stand up?')
+pkg=com.dijaedadula.fitdad id=0
+                android.title=String (Did you stand up? 🧍 (2:39 PM))
+== +31 after widget Stood up (expect stand notification cleared)
+clock -> Sun Nov 15 15:00:08 PST 2026
+widget: stood up at +50
+clock -> Sun Nov 15 15:11:08 PST 2026
+== +61 min (stand due; stood up 11 min ago via widget -> expect NO stand)
+widget: done working at +61
+clock -> Sun Nov 15 16:15:08 PST 2026
+== +125 min (stand reminders due but work ended -> expect NO stand)
+pkg=com.dijaedadula.fitdad id=0
+                android.title=String (Did you drink your water? 💧 (4:00 PM))

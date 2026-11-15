@@ -1,0 +1,21 @@
+11-15 14:47:20.413  6214  6214 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-15 14:47:20.417  6214  6214 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-15 14:47:20.420  6214  6214 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 51190563, pluginId: LocalNotifications, methodName: getPending
+11-15 14:47:20.420  6214  6214 V Capacitor: callback: 51190563, pluginId: LocalNotifications, methodName: getPending, methodData: {}
+11-15 15:00:08.022  6214  6214 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 51190564, pluginId: LocalNotifications, methodName: getDeliveredNotifications
+11-15 15:00:08.022  6214  6214 V Capacitor: callback: 51190564, pluginId: LocalNotifications, methodName: getDeliveredNotifications, methodData: {}
+11-15 15:00:20.246  6214  6214 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-15 15:00:20.248  6214  6214 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-15 15:00:20.258  6214  6214 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 51190570, pluginId: LocalNotifications, methodName: getPending
+11-15 15:00:20.258  6214  6214 V Capacitor: callback: 51190570, pluginId: LocalNotifications, methodName: getPending, methodData: {}
+11-15 15:11:08.421  6214  6214 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 51190571, pluginId: LocalNotifications, methodName: getDeliveredNotifications
+11-15 15:11:08.421  6214  6214 V Capacitor: callback: 51190571, pluginId: LocalNotifications, methodName: getDeliveredNotifications, methodData: {}
+11-15 15:11:08.425  6214  6214 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 51190572, pluginId: LocalNotifications, methodName: removeDeliveredNotifications
+11-15 15:11:08.426  6214  6214 V Capacitor: callback: 51190572, pluginId: LocalNotifications, methodName: removeDeliveredNotifications, methodData: {"notifications":[{"id":2000,"title":"Drink water 💧 Glass 3 of 12","body":"250 ml now · 2.50 L left to reach 3.00 L","groupSummary":false,"data":{"android.title":"Drink water 💧 Glass 3 of 12","android.reduced.images":true,"android.template":"android.app.Notification$BigTextStyle","android.showChronometer":false,"android.text":"250 ml now · 2.50 L left to reach 3.00 L","android.progress":0,"androidx.core.app.extra.COMPAT_TEMPLATE":"androidx.core.app.NotificationCompat$BigTextStyle","android.progressMax":0,"android.appInfo":"ApplicationInfo{423f230 com.dijaedadula.fitdad}","android.showWhen":true,"android.bigText":"250 ml now · 2.50 L left to reach 3.00 L","android.progressIndeterminate":false}}]}
+11-15 15:11:08.428  6214  6214 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-15 15:11:20.435  6214  6214 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-15 15:11:20.437  6214  6214 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+11-15 15:11:20.444  6214  6214 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 51190578, pluginId: LocalNotifications, methodName: getPending
+11-15 15:11:20.444  6214  6214 V Capacitor: callback: 51190578, pluginId: LocalNotifications, methodName: getPending, methodData: {}
+11-15 16:15:08.023  6214  6214 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 51190579, pluginId: LocalNotifications, methodName: getDeliveredNotifications
+11-15 16:15:08.023  6214  6214 V Capacitor: callback: 51190579, pluginId: LocalNotifications, methodName: getDeliveredNotifications, methodData: {}

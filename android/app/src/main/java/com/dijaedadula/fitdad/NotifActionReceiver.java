@@ -40,7 +40,8 @@ public class NotifActionReceiver extends BroadcastReceiver {
                     break;
                 case "drank":
                     FitDadWidget.log(ctx, true, "notif"); ReminderGate.clearDelivered(ctx, "water");
-                    msg = "💧 Glass logged";
+                    msg = ReminderGate.paceWarning(ctx);
+                    if (msg == null) msg = "💧 Glass logged";
                     break;
                 case "endwork":
                     FitDadWidget.endWork(ctx, "notif"); ReminderGate.clearDelivered(ctx, "stand");

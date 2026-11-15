@@ -45,6 +45,7 @@ public class FitDadWidget extends AppWidgetProvider {
         String a = intent.getAction();
         if (ACTION_WATER.equals(a) || ACTION_STAND.equals(a)) {
             log(ctx, ACTION_WATER.equals(a), "widget");
+            if (ACTION_WATER.equals(a)) { String w = ReminderGate.paceWarning(ctx); if (w != null) android.widget.Toast.makeText(ctx.getApplicationContext(), w, android.widget.Toast.LENGTH_LONG).show(); }
             ReminderGate.clearDelivered(ctx, ACTION_WATER.equals(a) ? "water" : "stand");
             updateAll(ctx);
             WidgetBridgePlugin.emitChanged();

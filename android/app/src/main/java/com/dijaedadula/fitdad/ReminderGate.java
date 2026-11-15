@@ -167,18 +167,18 @@ public class ReminderGate extends BroadcastReceiver {
             long lastDrink = lastAnswer(r.optJSONArray("log"), new String[] { "water" });
             long dayStart = r.optLong("dayStart", 0);
             long anchor = Math.max(lastDrink > 0 ? lastDrink : (dayStart > 0 ? dayStart : now), dayStart);
-            long minGap = Math.max(20, Math.round(glass / 800.0 * 60)) * 60000L;
+            long minGap = kidneyGap(root, glass);
+            long safeFrom = earliestSafe(root, r, now, glass);
 
             java.util.List<Long> times = new java.util.ArrayList<>();
             if (left > 0 && end > now) {
+                // kidney-safe: never faster than the safe pace; if behind, glasses that don't fit roll off (never squeezed)
                 double step = Math.max(minGap, (end - anchor) / (double) left);
-                if (anchor + step >= now + 60000) {
-                    for (int k = 1; k <= left; k++) times.add(Math.round(anchor + k * step));
-                } else {
-                    long first = now + Math.min(15 * 60000L, Math.max(60000L, (end - now) / left));
-                    times.add(first);
-                    if (left > 1) { step = Math.max(minGap, (end - first) / (double) (left - 1)); for (int k = 1; k < left; k++) times.add(Math.round(first + k * step)); }
-                }
+                long first = Math.round(anchor + step);
+                if (first < now + 60000) first = now + Math.min(15 * 60000L, Math.max(60000L, (end - now) / left));
+                first = Math.max(first, safeFrom);
+                if (left > 1) step = Math.max(minGap, (end - first) / (double) (left - 1));
+                for (int k = 0; k < left; k++) times.add(Math.round(first + k * step));
             }
             // swap the planned water reminders (2000–2099) for the new ones
             JSONObject all = loadItems(ctx);
@@ -204,6 +204,45 @@ public class ReminderGate extends BroadcastReceiver {
             saveItems(ctx, all);
             addItems(ctx, add);
         } catch (Exception ignored) { }
+    }
+
+    // ---------- Kidney-safe pace (kidneys clear only ~0.8–1 L/hour) ----------
+    static int safeRate(JSONObject root) { return Math.min(800, Math.max(300, FitDadWidget.setting(root, "safeRate", 500))); }
+    static long kidneyGap(JSONObject root, int glass) { return Math.max(30L, (long) Math.ceil(glass * 60.0 / safeRate(root))) * 60000L; }
+    /** ml drunk in the last hour (any source). */
+    static int recentMl(JSONObject root, JSONObject r, long now) {
+        int glass = FitDadWidget.setting(root, "glass", 250), sum = 0;
+        JSONArray log = r.optJSONArray("log");
+        if (log != null) for (int i = 0; i < log.length(); i++) { JSONObject e = log.optJSONObject(i);
+            if (e != null && "water".equals(e.optString("k")) && e.optLong("t") > now - 3600000L) sum += e.optInt("ml", glass); }
+        return sum;
+    }
+    /** Earliest time the next glass keeps the last 60 minutes within the safe pace, and a minimum gap after the last glass. */
+    static long earliestSafe(JSONObject root, JSONObject r, long now, int glass) {
+        int rate = safeRate(root), def = FitDadWidget.setting(root, "glass", 250);
+        java.util.List<long[]> recent = new java.util.ArrayList<>();
+        long last = 0;
+        JSONArray log = r.optJSONArray("log");
+        if (log != null) for (int i = 0; i < log.length(); i++) { JSONObject e = log.optJSONObject(i);
+            if (e == null || !"water".equals(e.optString("k"))) continue;
+            long t = e.optLong("t"); last = Math.max(last, t);
+            if (t > now - 3600000L) recent.add(new long[] { t, e.optInt("ml", def) }); }
+        recent.sort((a, b) -> Long.compare(a[0], b[0]));
+        long t = Math.max(now + 60000L, last > 0 ? last + kidneyGap(root, glass) : 0);
+        long sum = 0; for (long[] d : recent) sum += d[1];
+        for (int i = 0; i < recent.size() && sum + glass > rate; i++) { t = Math.max(t, recent.get(i)[0] + 3600000L); sum -= recent.get(i)[1]; }
+        return t;
+    }
+    /** Toast after a glass logged from the widget/notification when drinking too fast. */
+    static String paceWarning(Context ctx) {
+        try {
+            JSONObject root = FitDadWidget.load(ctx); JSONObject r = FitDadWidget.today(root);
+            int hr = recentMl(root, r, System.currentTimeMillis());
+            String L = String.format(Locale.US, "%.2f L", hr / 1000.0);
+            if (hr > 1000) return "⚠ " + L + " in the last hour — more than kidneys clear (~1 L/h). Pause water for now.";
+            if (hr > safeRate(root)) return "Easy — " + L + " in the last hour. Next glass is spaced out.";
+        } catch (Exception ignored) { }
+        return null;
     }
 
     // ---------- firing ----------
@@ -346,6 +385,7 @@ public class ReminderGate extends BroadcastReceiver {
                 long last = lastAnswer(log, new String[] { "water", "skip_w", "snooze_w" });
                 if (follow) return mainShown(ctx, "water", of, it) && last < of - 60000;
                 if (gap > 0 && last > now - gap / 2) return false;               // drank recently
+                if (recentMl(root, r, now) + FitDadWidget.setting(root, "glass", 250) > safeRate(root)) return false; // kidney-safe: hour is full
                 return true;
             }
             case "nudge": {

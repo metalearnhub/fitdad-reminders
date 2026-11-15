@@ -44,6 +44,7 @@
     waterEvery: 60,       // minutes (used when waterMode = 'fixed')
     waterMode: 'auto',    // 'auto' = spread remaining glasses from now until bedtime; 'fixed' = every N minutes
     waterGoal: 3000,      // ml
+    safeRate: 500,        // kidney-safe pace: never plan more than this many ml per hour
     glass: 250,           // ml
     nudgeTime: '09:00',
     nudgeRepeat: 45,      // minutes
@@ -105,9 +106,9 @@
   function markDayStart(r) { if (!r.dayStart) r.dayStart = Date.now(); }
   function waterRec() { return today(); }
 
-  function toast(msg) {
+  function toast(msg, ms = 2200) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
-    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200);
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms);
   }
 
   // ---------- Storage ----------
@@ -192,7 +193,10 @@
   function confirmWater(src) {
     clearShade('water');
     const r = waterRec(); markDayStart(r); r.water += settings.glass; logEvent(r, 'water', src, settings.glass);
-    toast(`+${settings.glass} ml logged · ${liters(Math.max(0, settings.waterGoal - r.water))} to go`);
+    const hr = recentMl(r, Date.now());
+    if (hr > KIDNEY_MAX) toast(`⚠ ${liters(hr)} in the last hour — more than kidneys clear (~1 L/h). Pause water for now; your next reminder is spaced out.`, 6000);
+    else if (hr > safeRate()) toast(`Easy — ${liters(hr)} in the last hour. Next glass is spaced to your ${safeRate()} ml/h kidney-safe pace.`, 5000);
+    else toast(`+${settings.glass} ml logged · ${liters(Math.max(0, settings.waterGoal - r.water))} to go`);
   }
   function undoWater() {
     const r = waterRec();
@@ -469,8 +473,9 @@
     if (cw.start && left > 0 && cw.end > now) {
       const times = [];
       if (settings.waterMode === 'fixed') {
-        const step = settings.waterEvery * 60000;
-        for (let ts = cw.start + step; ts <= cw.end && times.length < left; ts += step) if (ts > now + 30000) times.push(ts);
+        const step = Math.max(settings.waterEvery * 60000, minWaterGap(settings.glass));
+        const safeFrom = earliestSafe(wr, now, settings.glass);
+        for (let ts = cw.start + step; ts <= cw.end && times.length < left; ts += step) if (ts > now + 30000 && ts >= safeFrom) times.push(ts);
       } else {
         times.push(...autoWaterTimes(wr, cw, now, left));
       }
@@ -491,7 +496,7 @@
     if (cw.start && check > now && check < cw.end && wRemaining > settings.waterGoal * 0.4) {
       out.push({
         id: ID.CHECK, title: `Behind on water: ${liters(wRemaining)} to go`,
-        body: `You've had ${liters(wr.water)} of ${liters(settings.waterGoal)}. Drink a glass now.`,
+        body: `You've had ${liters(wr.water)} of ${liters(settings.waterGoal)}. One glass now is enough — Upkeep spaces the rest safely, no catching up.`,
         channelId: CH_WATER, actionTypeId: 'WATER', extra: { kind: 'check' }, at: check,
       });
     }
@@ -813,9 +818,11 @@
     const cwin = currentWindow();
     const pace = waterPace(wt, cwin, Date.now());
     const chip = !pace || gl === 0 || !cwin.start ? '' : pace.diff >= 2 ? `<span class="chip-s warn">Ahead by ${pace.diff} · slow down</span>`
-      : pace.diff <= -2 ? `<span class="chip-s bad">Behind by ${-pace.diff}</span>` : '<span class="chip-s ok">On pace</span>';
+      : pace.diff <= -2 ? `<span class="chip-s bad">Behind by ${-pace.diff} · no rush</span>` : '<span class="chip-s ok">On pace</span>';
+    const fitsToday = gl && cwin.start ? autoWaterTimes(wt, cwin, Date.now(), gl).length : gl;
+    const safeNote = gl && cwin.start && fitsToday < gl ? `<div class="stat-line">🫘 Kidney-safe today: ${liters(wt.water + fitsToday * settings.glass)} (${gl - fitsToday} glass${gl - fitsToday > 1 ? 'es' : ''} won't be forced)</div>` : '';
     $('waterPlan').innerHTML = gl === 0 ? `All ${total} glasses done 🎉`
-      : `Glass ${total - gl + 1} of ${total} ${chip}<div class="stat-line">${gl} × ${settings.glass} ml to go</div>`;
+      : `Glass ${total - gl + 1} of ${total} ${chip}<div class="stat-line">${gl} × ${settings.glass} ml to go</div>${safeNote}`;
     $('bedLabel').textContent = `Bed ${fmtTime(new Date(cwin.bedAt))} · last glass ${fmtTime(new Date(cwin.end))} · change`;
     $('waterPlus').textContent = `+ ${settings.glass} ml`;
 
@@ -846,7 +853,7 @@
   function renderSettings() {
     $('s-standEvery').value = settings.standEvery;
     $('s-waterEvery').value = settings.waterEvery;
-    modeDraft = null;
+    modeDraft = null; rateDraft = null;
     $('s-waterGoal').value = settings.waterGoal;
     $('s-glass').value = settings.glass;
     $('s-nudgeTime').value = settings.nudgeTime;
@@ -874,6 +881,7 @@
 
   let modeDraft = null;
   let bedDraft = null;
+  let rateDraft = null;
   let followDraft = null;
   function renderFollow() {
     const mk = (el, vals, cur, label, set) => {
@@ -905,21 +913,35 @@
   // last-glass time before bed — so the final glass lands right at bedtime minus 1 h, never hours early.
   // If you're behind, the next one comes within 15 min and the rest spread over the time left.
   // Safety: never schedule faster than ~0.8 L per hour (kidneys clear roughly 0.8–1 L/h)
-  const minWaterGap = (glass) => Math.max(20, Math.round(glass / 800 * 60)) * 60000;
+  // KIDNEY-SAFE: kidneys clear only ~0.8–1.0 L per hour. Drinking faster dilutes blood sodium (hyponatremia).
+  // So Upkeep never plans faster than your safe pace (default 500 ml/h), counts glasses you logged by hand in the
+  // last hour, and if you fall behind it does NOT compress the rest — glasses that don't fit safely roll off.
+  const KIDNEY_MAX = 1000;                                                   // ml per hour, hard physiological limit
+  const safeRate = () => Math.min(800, Math.max(300, Number(settings.safeRate) || 500));
+  const minWaterGap = (glass) => Math.max(30, Math.ceil(glass / safeRate() * 60)) * 60000;
+  const waterDrinks = (r) => (r.log || []).filter((e) => e.k === 'water').map((e) => ({ t: e.t, ml: e.ml || settings.glass })).sort((a, b) => a.t - b.t);
+  const recentMl = (r, now) => waterDrinks(r).filter((d) => d.t > now - 3600000).reduce((a, d) => a + d.ml, 0);
+  // earliest moment the next glass keeps the last 60 minutes within the safe pace (and a minimum gap after the last glass)
+  function earliestSafe(r, now, glass) {
+    const ds = waterDrinks(r); const last = ds.length ? ds[ds.length - 1].t : 0;
+    let t = Math.max(now + 60000, last ? last + minWaterGap(glass) : 0);
+    const recent = ds.filter((d) => d.t > now - 3600000);
+    let sum = recent.reduce((a, d) => a + d.ml, 0);
+    for (let i = 0; i < recent.length && sum + glass > safeRate(); i++) { t = Math.max(t, recent[i].t + 3600000); sum -= recent[i].ml; }
+    return t;
+  }
   function autoWaterTimes(r, cw, now, left, glass = settings.glass) {
     if (!left || !cw.end || cw.end <= now) return [];
     const minGap = minWaterGap(glass);
-    const drinks = (r.log || []).filter((e) => e.k === 'water').map((e) => e.t);
-    const anchor = Math.max(drinks.length ? Math.max(...drinks) : (cw.start || now), cw.start || 0);
+    const ds = waterDrinks(r);
+    const anchor = Math.max(ds.length ? ds[ds.length - 1].t : (cw.start || now), cw.start || 0);
     let step = Math.max(minGap, (cw.end - anchor) / left);
+    let first = anchor + step;
+    if (first < now + 60000) first = now + Math.min(15 * 60000, Math.max(60000, (cw.end - now) / left)); // behind: one glass soon, no rush after
+    first = Math.max(first, earliestSafe(r, now, glass));
+    if (left > 1) step = Math.max(minGap, (cw.end - first) / (left - 1));
     const out = [];
-    if (anchor + step >= now + 60000) {
-      for (let k = 1; k <= left; k++) out.push(Math.round(anchor + k * step));
-    } else {
-      const first = now + Math.min(15 * 60000, Math.max(60000, (cw.end - now) / left));
-      out.push(first);
-      if (left > 1) { step = Math.max(minGap, (cw.end - first) / (left - 1)); for (let k = 1; k < left; k++) out.push(Math.round(first + k * step)); }
-    }
+    for (let k = 0; k < left; k++) out.push(Math.round(first + k * step));
     return out.filter((t) => t <= cw.end + 1000);
   }
   // Where you should be right now if drinking evenly from start to last-glass time
@@ -943,7 +965,7 @@
       times = autoWaterTimes(waterRec(), { ...w, start: w.start || now }, now, left, glass);
     }
     const iv = fixed ? every : (times.length > 1 ? Math.round((times[1] - times[0]) / 60000) : minsLeft);
-    return { w, from, minsLeft, left, iv, times, fits: fixed ? Math.floor(minsLeft / every) : times.length };
+    return { w, from, minsLeft, left, iv, times, fits: fixed ? Math.floor(minsLeft / Math.max(every, Math.ceil(minWaterGap(glass) / 60000))) : times.length };
   }
   const TEMPLATES = [
     { label: '2.0 L · 8 × 250', goal: 2000, glass: 250 },
@@ -964,6 +986,12 @@
     });
     const bed = bedDraft || settings.bedTime;
     bedChips($('s-bed'), bed, (bt) => { bedDraft = bt; renderWaterPlanner(); });
+    const rateBox = $('s-rate'); rateBox.innerHTML = '';
+    const rate = rateDraft || settings.safeRate || 500;
+    [[400, 'Gentle'], [500, 'Standard'], [600, 'Active'], [700, 'Hot day / sweating']].forEach(([v, l]) => {
+      const b = document.createElement('button'); b.className = 'chip' + (v === rate ? ' on' : ''); b.textContent = `${v} ml/h · ${l}`;
+      b.onclick = () => { rateDraft = v; renderWaterPlanner(); }; rateBox.appendChild(b);
+    });
     const fixed = (modeDraft || settings.waterMode) === 'fixed';
     $('s-waterMode-auto').classList.toggle('on', !fixed);
     $('s-waterMode-fixed').classList.toggle('on', fixed);
@@ -973,16 +1001,21 @@
     const glass = Number($('s-glass').value) || settings.glass;
     const n = Math.ceil(goal / glass);
     const every = Number($('s-waterEvery').value) || settings.waterEvery;
+    const saved = settings.safeRate; settings.safeRate = rate;     // preview with the pace being picked
     const p = planFromNow(goal, glass, every, fixed, bed);
+    const minIv = Math.ceil(minWaterGap(glass) / 60000);
+    settings.safeRate = saved;
     const h = (m) => `${Math.floor(m / 60)} h ${pad(m % 60)} m`;
-    let msg = `${(goal / 1000).toFixed(2)} L = ${n} glasses × ${glass} ml. `;
+    let msg = `${(goal / 1000).toFixed(2)} L = ${n} glasses × ${glass} ml. Safe gap: at least ${minIv} min between glasses. `;
+    if (goal > 4000) msg += `\n⚠ Over 4 L a day is a lot for most adults — only if your doctor or heavy sweating calls for it.\n`;
     if (p.left === 0) msg += 'Goal already reached today. 🎉';
     else if (p.minsLeft === 0) msg += `It's past your last-glass time (${fmtTime(new Date(p.w.end))}). Tomorrow's plan starts when you start your day.`;
     else {
       msg += `${p.left} glass${p.left > 1 ? 'es' : ''} left until ${fmtTime(new Date(p.w.end))} (1 h before your ${fmtTime(new Date(p.w.bedAt))} bedtime) = ${h(p.minsLeft)} → one every ${p.iv} min, last glass at ${p.times.length ? fmtTime(new Date(p.times[p.times.length - 1])) : fmtTime(new Date(p.w.end))}.`;
       if (!fixed && p.times.length) msg += `\nPlan: ${p.times.map((t) => fmtTime(new Date(t))).join(' · ')}`;
-      if (!fixed && p.fits < p.left) msg += `\n⚠ Only ${p.fits} of ${p.left} fit safely before bed (max ~0.8 L per hour). Don't force the rest tonight — start earlier tomorrow.`;
-      if (fixed && p.fits < p.left) msg += ` ⚠ Only ${p.fits} fit before bed at every ${every} min — shorten the interval or use bigger glasses.`;
+      if (!fixed && p.fits < p.left) msg += `\n🫘 Only ${p.fits} of ${p.left} fit at your ${rate} ml/h kidney-safe pace before bed. The rest won't be forced — start earlier tomorrow.`;
+      if (fixed && every < minIv) msg += `\n🫘 ${every} min is too fast for ${glass} ml glasses at ${rate} ml/h — it will be raised to ${minIv} min.`;
+      if (fixed && p.fits < p.left) msg += ` ⚠ Only ${p.fits} fit before bed at every ${Math.max(every, minIv)} min.`;
       else if (fixed || p.fits >= p.left) msg += '\nReminders stop once the goal is met.';
     }
     $('s-waterPreview').textContent = msg;
@@ -995,8 +1028,10 @@
     settings.standEvery = num('s-standEvery', 10, 180, DEFAULTS.standEvery);
     settings.waterEvery = num('s-waterEvery', 15, 240, DEFAULTS.waterEvery);
     settings.waterMode = $('s-waterMode-fixed').classList.contains('on') ? 'fixed' : 'auto';
-    settings.waterGoal = num('s-waterGoal', 1000, 6000, DEFAULTS.waterGoal);
+    settings.waterGoal = num('s-waterGoal', 1000, 5000, DEFAULTS.waterGoal);
+    settings.safeRate = rateDraft || settings.safeRate || DEFAULTS.safeRate;
     settings.glass = num('s-glass', 100, 1000, DEFAULTS.glass);
+    { const minIv = Math.ceil(minWaterGap(settings.glass) / 60000); if (settings.waterEvery < minIv) { settings.waterEvery = minIv; toast(`Interval raised to ${minIv} min — kidney-safe for ${settings.glass} ml glasses`, 5000); } }
     settings.nudgeRepeat = num('s-nudgeRepeat', 15, 180, DEFAULTS.nudgeRepeat);
     settings.nudgeMax = num('s-nudgeMax', 1, 10, DEFAULTS.nudgeMax);
     settings.nudgeTime = $('s-nudgeTime').value || DEFAULTS.nudgeTime;
@@ -1014,7 +1049,12 @@
     });
     // Every + or − re-plans the rest of today's glasses up to bedtime, and says when the next one is
     const replanNote = (msg) => { const n = $('nextWater') ? $('nextWater').textContent : ''; toast(n ? `${msg} · ${n.replace('Next glass', 'next glass')}` : msg); };
-    $('waterPlus').onclick = async () => { confirmWater('app'); await save(); render(); await reschedule(); replanNote(`+${settings.glass} ml`); };
+    $('waterPlus').onclick = async () => {
+      confirmWater('app'); await save(); render(); await reschedule();
+      const hr = recentMl(waterRec(), Date.now());
+      if (hr > safeRate()) { const n = $('nextWater') ? $('nextWater').textContent.replace('Next glass', 'next glass') : ''; toast(`${hr > KIDNEY_MAX ? '⚠ ' : 'Easy — '}${liters(hr)} in the last hour${hr > KIDNEY_MAX ? ' (kidneys clear ~1 L/h). Pause water for now' : ''}${n ? ' · ' + n : ''}`, 6000); }
+      else replanNote(`+${settings.glass} ml`);
+    };
     $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); replanNote(`−${settings.glass} ml · re-planned`); };
     $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); await reschedule(); };
     $('backupNow').onclick = async () => {

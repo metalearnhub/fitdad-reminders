@@ -45,8 +45,8 @@ s = open('/tmp/sc.xml').read()
 m = re.search(r'(<string name="items">)(.*?)(</string>)', s, re.S)
 d = json.loads(html.unescape(m.group(2))) if m else {}
 i, k = int(sys.argv[1]), sys.argv[2]
-d[str(i)] = {"id": i, "at": int(time.time()*1000) + 3600000, "title": "Stand up now 🧍" if k == "stand" else "Drink water 💧", "body": "silent test",
-             "channel": "fitdad-alarm" if k == "stand" else "fitdad-water", "type": "STAND" if k == "stand" else "WATER", "kind": k, "follow": False, "of": 0, "gap": 0}
+d[str(i)] = {"id": i, "at": int(time.time()*1000) + 3600000, "title": "Drink water 💧" if k == "water" else "Stand up now 🧍", "body": "silent test",
+             "channel": "fitdad-water" if k == "water" else "fitdad-alarm", "type": "WATER" if k == "water" else "STAND", "kind": k, "follow": False, "of": 0, "gap": 0}
 x = '<string name="items">' + html.escape(json.dumps(d), quote=True) + '</string>'
 s = s[:m.start()] + x + s[m.end():] if m else s.replace('</map>', x + '\n</map>')
 open('/tmp/sc2.xml', 'w').write(s)
@@ -69,14 +69,16 @@ adb shell dumpsys notification | grep -oE "NotificationChannel\{mId='(fitdad-ala
 
 setring false
 ringer silent;  adb shell cmd notification set_dnd off >/dev/null 2>&1
-fire "A1: toggle OFF + SILENT, stand-up -> expect NO alarm-stream ring" stand
+fire "A1: toggle OFF + SILENT, stand-up channel (test alarm) -> expect NO alarm-stream ring" test
 fire "A2: toggle OFF + SILENT, water -> expect NO alarm-stream ring" water
 ringer normal; adb shell cmd notification set_dnd on >/dev/null 2>&1
-fire "B: toggle OFF + Do Not Disturb ON, stand-up -> expect NO alarm-stream ring" stand
+fire "B1: toggle OFF + Do Not Disturb ON, water -> expect NO alarm-stream ring" water
+fire "B2: toggle OFF + Do Not Disturb ON, stand-up channel -> expect NO alarm-stream ring" test
 adb shell cmd notification set_dnd off >/dev/null 2>&1
 setring true
 ringer silent
-fire "C (control): toggle ON + SILENT, stand-up -> expect alarm-stream ring" stand
+fire "C1 (control): toggle ON + SILENT, water -> expect alarm-stream ring" water
+fire "C2 (control): toggle ON + SILENT, stand-up channel -> expect alarm-stream ring" test
 ringer normal
 echo "---- channels after test ----" | tee -a $R
 adb shell dumpsys notification | grep -oE "NotificationChannel\{mId='(fitdad-alarm|fitdad-water|upkeep-car)'[^}]*" | grep -oE "mId='[^']*'|mBypassDnd=[a-z]*|usage=[A-Z_]*" | paste -sd' ' | tee -a $R

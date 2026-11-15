@@ -386,3 +386,5 @@ details.grp .specs { margin: 0 0 10px; }
 .news li:first-child { border-top: 0; }
 .news-ic { font-size: 22px; width: 28px; text-align: center; flex: none; }
 .news-more { color: var(--amber); font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+.btn.coffee { flex: 0 0 64px; font-size: 22px; padding-left: 0; padding-right: 0; }

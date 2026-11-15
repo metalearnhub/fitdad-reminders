@@ -13,6 +13,13 @@ window.UpkeepHelp = (function () {
       'The chip shows <b>On pace</b>, <b>Ahead</b> or <b>Behind · no rush</b>. Being behind never makes reminders come faster.',
       'From a notification: <b>Drank a glass</b> logs it without opening the app; <b>Snooze 10 min</b> waits.',
     ]) + '<p class="small muted">See also: <a data-help="kidney">kidney-safe pace</a> · <a data-help="late">logged late?</a></p>' },
+    coffee: { icon: '☕', title: 'Coffee', body:
+      '<p>Yes — coffee counts. For regular coffee drinkers, studies find brewed coffee hydrates about as well as water.</p>' + li([
+      'Tap <b>☕</b> on the water card for each mug. Its full size counts toward your water goal and the kidney-safe pace.',
+      'Set your <b>mug size</b> and <b>Brewed / Americano</b> in Settings → Water plan, so caffeine is estimated (≈95 mg per 240 ml brewed, ≈130 mg per 2-shot Americano).',
+      'Upkeep warns past <b>400 mg caffeine a day</b> (the usual safe limit for healthy adults) and when it\'s within 6 hours of bed.',
+      'Sweet coffee drinks, milk tea and soda add sugar — log them as glasses only if you want them counted.',
+    ]) + '<p class="small muted">Pregnant, have a heart condition, high blood pressure or reflux? Ask your doctor about caffeine.</p>' },
     kidney: { icon: '🫘', title: 'Kidney-safe pace', body:
       '<p>Kidneys clear only about <b>0.8–1 L of water per hour</b>. Drinking faster dilutes the salt in your blood (hyponatremia).</p>' + li([
       'Upkeep never plans faster than your pace — pick it in <b>Settings → Water plan</b> (default 500 ml/h).',
@@ -114,6 +121,9 @@ window.UpkeepHelp = (function () {
 
   // ---------- What's new (newest first; bump v for each release worth telling) ----------
   const WHATS_NEW = [
+    { v: 4, items: [
+      ['☕', 'Coffee counts', 'Tap ☕ for a mug — it adds to your water and tracks caffeine.', 'coffee'],
+    ] },
     { v: 3, items: [
       ['🫘', 'Kidney-safe water pace', 'Never more than your safe ml per hour; missed glasses roll off instead of being squeezed in.', 'kidney'],
       ['🕘', 'Logged glasses late?', 'Tap them in, then "Spread since…" puts them back where they belong.', 'late'],

@@ -44,12 +44,14 @@
             <div class="stat-main" id="waterPlan"></div>
             <div class="stat-line" id="nextWater"></div>
             <div class="stat-ago water-c" id="waterAgo"></div>
+            <div class="stat-line" id="coffeeLine" hidden></div>
             <button class="linkbtn left" id="bedEdit">🌙 <span id="bedLabel"></span></button>
           </div>
         </div>
         <div class="burst" id="waterBurst" hidden></div>
         <div class="btn-row">
           <button class="btn ghost undo" id="waterMinus" aria-label="Undo one glass">−</button>
+          <button class="btn ghost coffee" id="coffeePlus" aria-label="Log a coffee">☕</button>
           <button class="btn water" id="waterPlus">+ Glass</button>
         </div>
       </div>
@@ -99,6 +101,10 @@
           <input type="number" id="s-waterGoal" min="1000" max="5000" step="100" /></label>
         <label class="field"><span>Glass size (ml)</span>
           <input type="number" id="s-glass" min="100" max="1000" step="50" /></label>
+        <label class="field"><span>☕ Coffee mug (ml) <button class="info" data-help="coffee" aria-label="How this works">i</button></span>
+          <input type="number" id="s-mug" min="100" max="600" step="10" /></label>
+        <div class="field"><span>Coffee type</span>
+          <div class="seg"><button class="chip" data-ctype="brewed">Brewed</button><button class="chip" data-ctype="americano">Americano</button></div></div>
         <div class="field col"><span>🫘 Kidney-safe pace (most per hour) <button class="info" data-help="kidney" aria-label="How this works">i</button></span>
           <div class="chips tight" id="s-rate"></div>
           <span class="muted small">Kidneys clear only about 0.8–1 L of water per hour. Upkeep never plans faster than this pace, counts glasses you log yourself, and if you fall behind it won't squeeze glasses closer — the extra ones just roll off. Have kidney, heart or liver issues? Ask your doctor for your limit.</span></div>

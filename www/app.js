@@ -45,6 +45,8 @@
     waterMode: 'auto',    // 'auto' = spread remaining glasses from now until bedtime; 'fixed' = every N minutes
     waterGoal: 3000,      // ml
     safeRate: 500,        // kidney-safe pace: never plan more than this many ml per hour
+    mug: 240,             // coffee mug size (ml) — counts toward water
+    coffeeType: 'brewed', // brewed (~95 mg caffeine per 240 ml) | americano (~2 shots, ~130 mg per mug)
     glass: 250,           // ml
     nudgeTime: '09:00',
     nudgeRepeat: 45,      // minutes
@@ -197,6 +199,20 @@
     if (hr > KIDNEY_MAX) toast(`⚠ ${liters(hr)} in the last hour — more than kidneys clear (~1 L/h). Pause water for now; your next reminder is spaced out.`, 6000);
     else if (hr > safeRate()) toast(`Easy — ${liters(hr)} in the last hour. Next glass is spaced to your ${safeRate()} ml/h kidney-safe pace.`, 5000);
     else toast(`+${settings.glass} ml logged · ${liters(Math.max(0, settings.waterGoal - r.water))} to go`);
+  }
+  // ---------- Coffee: counts toward water (studies: as hydrating as water for regular drinkers) + caffeine ----------
+  const CAFFEINE_MAX = 400;   // mg/day — FDA: not generally linked to negative effects for healthy adults
+  const caffeinePerMug = () => (settings.coffeeType === 'americano' ? 130 : Math.round(95 * (settings.mug || 240) / 240));
+  const coffeesToday = (r) => (r.log || []).filter((e) => e.k === 'water' && e.drink === 'coffee');
+  function confirmCoffee(src) {
+    clearShade('water');
+    const r = waterRec(); markDayStart(r); const ml = Number(settings.mug) || 240;
+    r.water += ml; r.log.push({ t: Date.now(), k: 'water', src, ml, drink: 'coffee', mg: caffeinePerMug() });
+    const mg = coffeesToday(r).reduce((a, e) => a + (e.mg || caffeinePerMug()), 0);
+    const bedSoon = currentWindow().bedAt - Date.now() < 6 * 3600000;
+    if (mg > CAFFEINE_MAX) toast(`☕ +${ml} ml counted · ~${mg} mg caffeine today — above the 400 mg/day guideline`, 6000);
+    else if (bedSoon) toast(`☕ +${ml} ml counted · caffeine within 6 h of bed can disturb sleep`, 5000);
+    else toast(`☕ +${ml} ml counted toward water · ~${mg} mg caffeine today`, 4000);
   }
   function undoWater() {
     const r = waterRec();
@@ -786,7 +802,7 @@
     const names = { dayoff: '🏖 Day off', endwork: '✅ Done working', pause: '⏸ Paused', water: '💧 Drank a glass', stand: '🧍 Stood up', snooze_w: '💤 Snoozed water', snooze_s: '💤 Snoozed stand-up', skip_w: '⏭ Skipped water', skip_s: '⏭ Skipped stand-up' };
     const evs = (tw.key === t.key ? t.log : tw.log.concat(t.log)).slice().sort((a, b) => b.t - a.t).slice(0, 30);
     $('statTimeline').innerHTML = evs.length
-      ? evs.map((e) => `<li><span>${names[e.k] || e.k}</span><span class="muted">${fmtTime(new Date(e.t))}${e.src === 'notif' ? ' · 🔔' : ''}</span></li>`).join('')
+      ? evs.map((e) => `<li><span>${e.drink === 'coffee' ? `☕ Coffee (${e.ml} ml)` : names[e.k] || e.k}</span><span class="muted">${fmtTime(new Date(e.t))}${e.src === 'notif' ? ' · 🔔' : ''}</span></li>`).join('')
       : '<li class="muted">Nothing logged yet today.</li>';
 
     const wk = lastNDays(7), prev = lastNDays(7, 7);
@@ -891,6 +907,9 @@
       $('waterBurst').querySelectorAll('[data-burst]').forEach((x) => { x.onclick = () => fixBurst(x.dataset.burst); });
     }
     $('waterPlus').textContent = `+ ${settings.glass} ml`;
+    const cf = coffeesToday(wt);
+    $('coffeeLine').hidden = !cf.length;
+    if (cf.length) { const mg = cf.reduce((a, e) => a + (e.mg || caffeinePerMug()), 0); $('coffeeLine').innerHTML = `☕ ${cf.length} coffee${cf.length > 1 ? 's' : ''} · ~${mg} mg caffeine${mg > CAFFEINE_MAX ? ' <span class="chip-s bad">over 400</span>' : ''}`; }
 
     // stand
     const working = t.status === 'active' || t.status === 'paused';
@@ -922,6 +941,8 @@
     modeDraft = null; rateDraft = null;
     $('s-waterGoal').value = settings.waterGoal;
     $('s-glass').value = settings.glass;
+    $('s-mug').value = settings.mug;
+    document.querySelectorAll('[data-ctype]').forEach((b) => { b.classList.toggle('on', b.dataset.ctype === (settings.coffeeType || 'brewed')); b.onclick = () => document.querySelectorAll('[data-ctype]').forEach((x) => x.classList.toggle('on', x === b)); });
     $('s-nudgeTime').value = settings.nudgeTime;
     $('s-nudgeRepeat').value = settings.nudgeRepeat;
     $('s-nudgeMax').value = settings.nudgeMax;
@@ -1097,6 +1118,8 @@
     settings.waterGoal = num('s-waterGoal', 1000, 5000, DEFAULTS.waterGoal);
     settings.safeRate = rateDraft || settings.safeRate || DEFAULTS.safeRate;
     settings.glass = num('s-glass', 100, 1000, DEFAULTS.glass);
+    settings.mug = num('s-mug', 100, 600, DEFAULTS.mug);
+    { const on = document.querySelector('[data-ctype].on'); settings.coffeeType = on ? on.dataset.ctype : 'brewed'; }
     { const minIv = Math.ceil(minWaterGap(settings.glass) / 60000); if (settings.waterEvery < minIv) { settings.waterEvery = minIv; toast(`Interval raised to ${minIv} min — kidney-safe for ${settings.glass} ml glasses`, 5000); } }
     settings.nudgeRepeat = num('s-nudgeRepeat', 15, 180, DEFAULTS.nudgeRepeat);
     settings.nudgeMax = num('s-nudgeMax', 1, 10, DEFAULTS.nudgeMax);
@@ -1122,6 +1145,7 @@
       else if (hr > safeRate()) { const n = $('nextWater') ? $('nextWater').textContent.replace('Next glass', 'next glass') : ''; toast(`${hr > KIDNEY_MAX ? '⚠ ' : 'Easy — '}${liters(hr)} in the last hour${hr > KIDNEY_MAX ? ' (kidneys clear ~1 L/h). Pause water for now' : ''}${n ? ' · ' + n : ''}`, 6000); }
       else replanNote(`+${settings.glass} ml`);
     };
+    $('coffeePlus').onclick = async () => { confirmCoffee('app'); await save(); render(); await reschedule(); };
     $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); replanNote(`−${settings.glass} ml · re-planned`); };
     $('standPlus').onclick = async () => { confirmStand('app'); await save(); render(); await reschedule(); };
     $('backupNow').onclick = async () => {
@@ -1172,7 +1196,7 @@
     const last = (k) => (r.log || []).filter((e) => e.k === k).sort((a, b) => b.t - a.t)[0];
     const st = last('stand'), wa = last('water');
     if ($('standAgo')) $('standAgo').textContent = st ? `Last stood up ${agoText(st.t)}` : 'No stand-up yet today';
-    if ($('waterAgo')) $('waterAgo').textContent = wa ? `Last glass ${agoText(wa.t)}` : 'No glass yet today';
+    if ($('waterAgo')) $('waterAgo').textContent = wa ? `Last ${wa.drink === 'coffee' ? 'coffee' : 'glass'} ${agoText(wa.t)}` : 'No glass yet today';
     if ($('standAgo')) $('standAgo').title = st ? `${fmtTime(new Date(st.t))} via ${SRC[st.src] || st.src}` : '';
     if ($('waterAgo')) $('waterAgo').title = wa ? `${fmtTime(new Date(wa.t))} via ${SRC[wa.src] || wa.src}` : '';
   }

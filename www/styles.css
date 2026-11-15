@@ -219,8 +219,9 @@ body.on-today .workbar { display: flex; }
 .wb-btns .btn { flex: none; padding: 10px 12px; font-size: 14px; border-radius: 12px; }
 @media (max-width: 360px) { .ringbox { width: 96px; height: 96px; } .ring-big { font-size: 18px; } .wb-btns .btn { padding: 9px 9px; font-size: 13px; } }
 
-.view.active.today { display: grid; grid-template-rows: 1fr 1fr; gap: 12px;
-  height: calc(100dvh - 196px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 470px; }
+.view.active.today { display: grid; grid-template-rows: minmax(min-content, 1fr) minmax(min-content, 1fr); gap: 12px;
+  min-height: max(470px, calc(100dvh - 196px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
+/* rows grow to fit their content, so a busy water card never pushes its buttons into the stand-up card */
 .today .half { min-height: 0; }
 .today .half-stats .stat-main .stat-line { font-weight: 400; margin-top: 3px; }
 .chip-s { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; vertical-align: 2px; margin-left: 4px; }
@@ -259,9 +260,9 @@ body.on-today .workbar { display: flex; }
 .toggle input:checked + i::after { transform: translateX(18px); }
 body.no-water .w-only, body.no-water .water-half { display: none !important; }
 body.no-stand .s-only, body.no-stand .stand-half, body.no-stand .workbar { display: none !important; }
-body.one-half .view.active.today { grid-template-rows: 1fr; }
+body.one-half .view.active.today { grid-template-rows: minmax(min-content, 1fr); }
 body.on-today.no-stand { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
-body.no-stand .view.active.today { height: calc(100dvh - 132px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+body.no-stand .view.active.today { min-height: calc(100dvh - 132px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 body.no-health .view.active.today { display: block; height: auto; min-height: 0; }
 .tab[hidden] { display: none; }
 .today-car h2 { margin-top: 0; }
@@ -388,3 +389,6 @@ details.grp .specs { margin: 0 0 10px; }
 .news-more { color: var(--amber); font-size: 12px; font-weight: 700; white-space: nowrap; }
 
 .btn.coffee { flex: 0 0 64px; font-size: 22px; padding-left: 0; padding-right: 0; }
+
+.ring-sub.coffee-sub { margin-top: 4px; font-size: 10.5px; }
+.half-stats .stat-line .safe { color: #9FB3C8; white-space: nowrap; }

@@ -895,10 +895,11 @@
     const chip = !pace || gl === 0 || !cwin.start ? '' : pace.diff >= 2 ? `<span class="chip-s warn">Ahead by ${pace.diff} · slow down</span>`
       : pace.diff <= -2 ? `<span class="chip-s bad">Behind by ${-pace.diff} · no rush</span>` : '<span class="chip-s ok">On pace</span>';
     const fitsToday = gl && cwin.start ? autoWaterTimes(wt, cwin, Date.now(), gl).length : gl;
-    const safeNote = gl && cwin.start && fitsToday < gl ? `<div class="stat-line">🫘 Kidney-safe today: ${liters(wt.water + fitsToday * settings.glass)} (${gl - fitsToday} glass${gl - fitsToday > 1 ? 'es' : ''} won't be forced)</div>` : '';
+    const safeNote = gl && cwin.start && fitsToday < gl ? ` · <span class="safe" title="${gl - fitsToday} glass${gl - fitsToday > 1 ? 'es' : ''} won't be forced">🫘 ${liters(wt.water + fitsToday * settings.glass)} safe today</span>` : '';
     $('waterPlan').innerHTML = gl === 0 ? `All ${total} glasses done 🎉`
-      : `Glass ${total - gl + 1} of ${total} ${chip}<div class="stat-line">${gl} × ${settings.glass} ml to go</div>${safeNote}`;
-    $('bedLabel').textContent = `Bed ${fmtTime(new Date(cwin.bedAt))} · last glass ${fmtTime(new Date(cwin.end))} · change`;
+      : `Glass ${total - gl + 1} of ${total} ${chip}<div class="stat-line">${gl} × ${settings.glass} ml to go${safeNote}</div>`;
+    $('bedLabel').textContent = `Bed ${fmtTime(new Date(cwin.bedAt))} · change`;
+    $('bedEdit').title = `Last glass ${fmtTime(new Date(cwin.end))}`;
     const burst = waterBurst(wt);
     $('waterBurst').hidden = !burst;
     if (burst) {
@@ -909,7 +910,7 @@
     $('waterPlus').textContent = `+ ${settings.glass} ml`;
     const cf = coffeesToday(wt);
     $('coffeeLine').hidden = !cf.length;
-    if (cf.length) { const mg = cf.reduce((a, e) => a + (e.mg || caffeinePerMug()), 0); $('coffeeLine').innerHTML = `☕ ${cf.length} coffee${cf.length > 1 ? 's' : ''} · ~${mg} mg caffeine${mg > CAFFEINE_MAX ? ' <span class="chip-s bad">over 400</span>' : ''}`; }
+    if (cf.length) { const mg = cf.reduce((a, e) => a + (e.mg || caffeinePerMug()), 0); $('coffeeLine').innerHTML = `☕ ${mg > CAFFEINE_MAX ? '<b style="color:var(--danger)">' + mg + ' mg</b>' : mg + ' mg'}`; $('coffeeLine').title = `${cf.length} coffee${cf.length > 1 ? 's' : ''} · ~${mg} mg caffeine today`; }
 
     // stand
     const working = t.status === 'active' || t.status === 'paused';

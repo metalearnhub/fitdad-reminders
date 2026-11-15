@@ -367,3 +367,22 @@ details.grp .specs { margin: 0 0 10px; }
 .burst[hidden] { display: none; }
 .burst-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .burst-btns .chip { font-size: 12px; padding: 6px 10px; }
+
+/* ---------- ⓘ help ---------- */
+.info { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #4B5565; background: transparent; color: var(--muted); font: italic 700 11px/1 Georgia, serif; padding: 0; margin-left: 6px; vertical-align: 2px; cursor: pointer; flex: none; }
+.info:active { border-color: var(--amber); color: var(--amber); }
+.workbar .info { margin: 0 2px 0 -2px; }
+.help-body { text-align: left; font-size: 14px; line-height: 1.5; }
+.help-body p { margin: 8px 0; }
+.help-list { margin: 6px 0 4px; padding-left: 18px; }
+.help-list li { margin: 7px 0; }
+.help-body a, .sheet-card a[data-help] { color: var(--amber); font-weight: 700; text-decoration: none; cursor: pointer; }
+.help-index { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+.dots { display: flex; justify-content: center; gap: 6px; margin: 14px 0 0; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: #2E3542; }
+.dots i.on { background: var(--amber); width: 18px; border-radius: 4px; }
+.news { list-style: none; padding: 0; margin: 10px 0 0; text-align: left; }
+.news li { display: flex; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.news li:first-child { border-top: 0; }
+.news-ic { font-size: 22px; width: 28px; text-align: center; flex: none; }
+.news-more { color: var(--amber); font-size: 12px; font-weight: 700; white-space: nowrap; }

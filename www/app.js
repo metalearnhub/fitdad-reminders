@@ -1414,6 +1414,14 @@
     await load();
     autoEndIfNeeded();
     render();
+    if (window.UpkeepHelp) {
+      const hasData = Object.values(days).some((r) => (r.log && r.log.length) || r.startedAt) || !!(extraData.car && extraData.car.cars && extraData.car.cars.length);
+      window.UpkeepHelp.init({ get: () => ({ seenTour: settings.seenTour, seenNews: settings.seenNews, hasData }),
+        set: async (patch) => { Object.assign(settings, patch); await save(); } });
+      $('helpAll').onclick = () => window.UpkeepHelp.index();
+      $('helpNew').onclick = () => window.UpkeepHelp.whatsNew(0, true);
+      $('helpTour').onclick = () => window.UpkeepHelp.tour(0);
+    }
     await setupNative();
     await save();
     await reschedule();

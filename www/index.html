@@ -29,7 +29,7 @@
       <!-- WATER — top half -->
       <div class="card half water-half">
         <div class="half-head">
-          <h2>💧 Water</h2>
+          <h2>💧 Water <button class="info" data-help="water" aria-label="How this works">i</button></h2>
           <span class="muted small" id="waterGoalLabel"></span>
         </div>
         <div class="half-body">
@@ -57,7 +57,7 @@
       <!-- STAND-UPS — bottom half, same size -->
       <div class="card half stand-half">
         <div class="half-head">
-          <h2>🧍 Stand-ups</h2>
+          <h2>🧍 Stand-ups <button class="info" data-help="stand" aria-label="How this works">i</button></h2>
           <span class="muted small" id="standEveryLabel"></span>
         </div>
         <div class="half-body">
@@ -84,7 +84,7 @@
     <!-- SETTINGS -->
     <section class="view" id="view-settings">
       <div class="card">
-        <h2>Features</h2>
+        <h2>Features <button class="info" data-help="features" aria-label="How this works">i</button></h2>
         <p class="muted small">Use Upkeep your way. Turning a feature off hides it and stops its reminders — your data is kept.</p>
         <label class="toggle"><span>💧 Water<small>Glasses, water plan and reminders</small></span><input type="checkbox" id="f-water" /><i></i></label>
         <label class="toggle"><span>🧍 Stand-ups<small>Work sessions, stand-up reminders, morning nudge</small></span><input type="checkbox" id="f-stand" /><i></i></label>
@@ -92,14 +92,14 @@
       </div>
 
       <div class="card w-only">
-        <h2>Water plan 💧</h2>
+        <h2>Water plan 💧 <button class="info" data-help="water" aria-label="How this works">i</button></h2>
         <p class="muted small">Pick a template or set your own goal and glass size. Upkeep works out how many glasses and when.</p>
         <div class="chips" id="s-templates"></div>
         <label class="field"><span>Daily goal (ml)</span>
           <input type="number" id="s-waterGoal" min="1000" max="5000" step="100" /></label>
         <label class="field"><span>Glass size (ml)</span>
           <input type="number" id="s-glass" min="100" max="1000" step="50" /></label>
-        <div class="field col"><span>🫘 Kidney-safe pace (most per hour)</span>
+        <div class="field col"><span>🫘 Kidney-safe pace (most per hour) <button class="info" data-help="kidney" aria-label="How this works">i</button></span>
           <div class="chips tight" id="s-rate"></div>
           <span class="muted small">Kidneys clear only about 0.8–1 L of water per hour. Upkeep never plans faster than this pace, counts glasses you log yourself, and if you fall behind it won't squeeze glasses closer — the extra ones just roll off. Have kidney, heart or liver issues? Ask your doctor for your limit.</span></div>
         <div class="field col"><span>I usually sleep at</span>
@@ -116,13 +116,13 @@
       </div>
 
       <div class="card s-only">
-        <h2>Stand-ups</h2>
+        <h2>Stand-ups <button class="info" data-help="stand" aria-label="How this works">i</button></h2>
         <label class="field"><span>Stand up every (minutes)</span>
           <input type="number" id="s-standEvery" min="10" max="180" step="5" /></label>
       </div>
 
       <div class="card">
-        <h2>Confirm follow-ups</h2>
+        <h2>Confirm follow-ups <button class="info" data-help="follow" aria-label="How this works">i</button></h2>
         <div class="field col"><span>Ask again if not confirmed after</span>
           <div class="chips tight" id="s-follow"></div></div>
         <div class="field col" id="s-followNRow"><span>Ask up to</span>
@@ -131,7 +131,7 @@
       </div>
 
       <div class="card s-only">
-        <h2>Morning nudge</h2>
+        <h2>Morning nudge <button class="info" data-help="nudge" aria-label="How this works">i</button></h2>
         <p class="muted small">If you haven't tapped Start by this time, Upkeep nudges you and keeps asking until you answer.</p>
         <label class="field"><span>First nudge at</span>
           <input type="time" id="s-nudgeTime" /></label>
@@ -148,7 +148,20 @@
       <button class="btn primary full" id="saveSettings">Save settings</button>
 
       <div class="card">
-        <h2>Make alarms reliable</h2>
+        <h2>❓ Help &amp; what's new</h2>
+        <p class="muted small">Tap the <b>i</b> next to any section to learn how it works.</p>
+        <div class="btn-row">
+          <button class="btn ghost" id="helpAll">All help topics</button>
+          <button class="btn ghost" id="helpNew">What's new</button>
+        </div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn ghost" id="helpTour">Welcome tour</button>
+          <button class="btn ghost" data-help="widget">Widget tips</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Make alarms reliable <button class="info" data-help="silent" aria-label="How this works">i</button></h2>
         <label class="toggle"><span>🔔 Ring even on Silent<small>Stand-up and water reminders play on the alarm volume when your phone is on Silent or Vibrate. Never during Do Not Disturb, and never without a visible notification.</small></span><input type="checkbox" id="s-ringSilent" /><i></i></label>
         <ol class="small muted tips">
           <li>Allow notifications when asked.</li>
@@ -162,7 +175,7 @@
         </div>
       </div>
       <div class="card">
-        <h2>Backup, restore &amp; reset</h2>
+        <h2>Backup, restore &amp; reset <button class="info" data-help="backup" aria-label="How this works">i</button></h2>
         <p class="muted small">Backups go to <b>Downloads/Upkeep</b> and are also kept inside the app. A backup is made automatically before every reset and restore.</p>
         <div class="btn-row">
           <button class="btn ghost" id="backupNow">⬇ Back up now</button>
@@ -175,7 +188,7 @@
 
     <!-- STATS -->
     <section class="view" id="view-stats">
-      <div class="card"><h2>Today</h2><div id="statToday"></div></div>
+      <div class="card"><h2>Today <button class="info" data-help="stats" aria-label="How this works">i</button></h2><div id="statToday"></div></div>
       <div class="card"><h2>Today's log</h2><ul class="timeline" id="statTimeline"></ul></div>
       <div class="card"><h2>This week</h2><div id="statWeek"></div></div>
     </section>
@@ -206,6 +219,7 @@
   <script src="carmap.js"></script>
   <script src="apvspecs.js"></script>
   <script src="car.js"></script>
+  <script src="help.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

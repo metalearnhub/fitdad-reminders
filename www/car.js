@@ -395,7 +395,7 @@ window.UpkeepCar = function (api) {
     const sp = specsFor(c); if (!sp) return '';
     const zones = Object.keys(sp.S).filter((z) => MAP.zone(z)); // guide order: engine first, papers last
     return `<div class="card">
-      <div class="water-head"><h2>📘 APV parts & fluids guide</h2><button class="linkbtn" data-copyspec="${zones.join(',')}" style="margin:0">📋 Copy all</button></div>
+      <div class="water-head"><h2>📘 APV parts & fluids guide ${window.UpkeepHelp ? window.UpkeepHelp.btn('specs') : ''}</h2><button class="linkbtn" data-copyspec="${zones.join(',')}" style="margin:0">📋 Copy all</button></div>
       <p class="muted small" style="margin-top:0">For a 2005–2018 Suzuki APV 1.6 (G16A, 5-speed manual). <b>✔ fits APV</b> = matches parts-maker fitment / Suzuki engine data. <b>⚠ confirm</b> = typical, so check the label, the old part, or ask the shop before buying.${currentKm(c) >= 150000 ? ' 🕰 High-mileage tips are shown because your van is past 150,000 km.' : ''}</p>
       ${zones.map((z) => `<details class="grp"><summary><span>${MAP.zone(z).icon} <b>${esc(MAP.zone(z).name)}</b></span><span class="muted small">${sp.S[z].length}</span></summary>${specsHTML(c, [z], { title: false })}</details>`).join('')}
     </div>`;
@@ -426,7 +426,7 @@ window.UpkeepCar = function (api) {
     const attention = Object.keys(by).filter((z) => status[z] === 'overdue' || status[z] === 'soon').sort((a, b) => RANK[status[b]] - RANK[status[a]]);
     const tracked = Object.keys(by).length;
     return `<div class="card">
-      <div class="water-head"><h2>🗺 Parts map</h2><span class="muted small">${mapLabel(c)}</span></div>
+      <div class="water-head"><h2>🗺 Parts map ${window.UpkeepHelp ? window.UpkeepHelp.btn('map') : ''}</h2><span class="muted small">${mapLabel(c)}</span></div>
       <p class="muted small" style="margin-top:0">X-ray view, front of the van at the top. The engine sits <b>under the front seats</b>. Tap any part to see its schedule and records.</p>
       <div class="map-legend"><span><i style="background:var(--danger)"></i>Overdue</span><span><i style="background:var(--amber)"></i>Due soon</span><span><i style="background:var(--stand)"></i>OK</span><span><i style="background:var(--water)"></i>Records only</span><span><i style="background:#232A35;border:1px solid #4B5565"></i>Not tracked</span></div>
       ${focus ? `<div class="chips tight"><button class="chip on" id="mapClear">📍 ${focus.map((z) => esc((MAP.zone(z) || {}).name || z)).slice(0, 3).join(', ')}${focus.length > 3 ? '…' : ''} &nbsp;× Show all</button></div>` : ''}
@@ -467,7 +467,7 @@ window.UpkeepCar = function (api) {
     if (!c) {
       el.innerHTML = `
         <div class="card">
-          <h2>Car care 🚗</h2>
+          <h2>Car care 🚗 ${window.UpkeepHelp ? window.UpkeepHelp.btn('car') : ''}</h2>
           <p class="muted">Track oil changes, PMS, tires, LTO registration and insurance — by kilometers or months, whichever comes first.</p>
           <button class="btn primary full" id="carAdd">Add your car</button>
         </div>`;
@@ -488,7 +488,7 @@ window.UpkeepCar = function (api) {
     el.innerHTML = `
       ${d.cars.length > 1 ? `<div class="chips">${d.cars.map((x) => `<button class="chip ${x.id === c.id ? 'on' : ''}" data-car="${x.id}">${esc(x.name)}</button>`).join('')}</div>` : ''}
       <div class="card">
-        <div class="status-row"><span class="muted small">Your car</span><button class="linkbtn" id="carEdit" style="margin:0">Edit car</button></div>
+        <div class="status-row"><span class="muted small">Your car ${window.UpkeepHelp ? window.UpkeepHelp.btn('car') : ''}</span><button class="linkbtn" id="carEdit" style="margin:0">Edit car</button></div>
         <h1 style="margin-bottom:2px">${esc(c.name)}</h1>
         <p class="muted" style="margin-top:0">${esc(c.plate || '')}</p>
         <div class="kpis">
@@ -512,7 +512,7 @@ window.UpkeepCar = function (api) {
       </div>
       ${view === 'map' ? mapHTML(c) : view === 'fuel' ? fuelHTML(c) : view === 'records' ? recordsHTML(c) : `
       <div class="card">
-        <div class="water-head"><h2>Maintenance</h2><button class="linkbtn" id="carAddItem" style="margin:0">+ Add item</button></div>
+        <div class="water-head"><h2>Maintenance ${window.UpkeepHelp ? window.UpkeepHelp.btn('maint') : ''}</h2><button class="linkbtn" id="carAddItem" style="margin:0">+ Add item</button></div>
         ${its.length ? GROUPS.map((g) => {
           const gi = its.filter((x) => groupOf(x.i) === g.id);
           if (!gi.length) return '';
@@ -950,7 +950,7 @@ window.UpkeepCar = function (api) {
     const ins = insights(c);
     return `
       <div class="card">
-        <div class="water-head"><h2>Fuel efficiency</h2><span class="muted small">${last ? 'last tank ' + f1(last.eff) + ' km/L' : ''}</span></div>
+        <div class="water-head"><h2>Fuel efficiency ${window.UpkeepHelp ? window.UpkeepHelp.btn('fuel') : ''}</h2><span class="muted small">${last ? 'last tank ' + f1(last.eff) + ' km/L' : ''}</span></div>
         <div class="chips">${['all', 'month', 'quarter', 'year'].map((p) => `<button class="chip ${p === period ? 'on' : ''}" data-period="${p}">${PERIOD_LABEL[p]} (${stats(c, p).fills.length || fills(c).filter((f) => { const [a, b2] = periodRange(p); return f.t >= a && f.t < b2; }).length})</button>`).join('')}</div>
         <div class="kpis">
           <div class="kpi"><div class="kv water-c">${f1(cur.eff)}<small> km/L</small></div><div class="kl">avg efficiency${cur.eff ? ' · ' + f1(100 / cur.eff) + ' L/100km' : ''}</div>${pv ? deltaTag(cur.eff, prev.eff, true).replace('${x}', pv) : ''}</div>
@@ -962,7 +962,7 @@ window.UpkeepCar = function (api) {
       </div>
 
       <div class="card">
-        <div class="water-head"><h2>Leaderboard &amp; fill-ups</h2><span class="muted small">${PERIOD_LABEL[period]}</span></div>
+        <div class="water-head"><h2>Leaderboard &amp; fill-ups ${window.UpkeepHelp ? window.UpkeepHelp.btn('fuel') : ''}</h2><span class="muted small">${PERIOD_LABEL[period]}</span></div>
         <div class="seg" style="margin:6px 0 8px">
           <button class="chip ${lbSort === 'eff' ? 'on' : ''}" data-sort="eff">Best km/L</button>
           <button class="chip ${lbSort === 'date' ? 'on' : ''}" data-sort="date">Latest</button>
@@ -1234,7 +1234,7 @@ window.UpkeepCar = function (api) {
     const total = shown.reduce((a, r) => a + (r.cost || 0), 0);
     return `
       <div class="card">
-        <div class="water-head"><h2>🛡 Warranties</h2><span class="muted small">${active.length} active · ${withW.length - active.length} ended</span></div>
+        <div class="water-head"><h2>🛡 Warranties ${window.UpkeepHelp ? window.UpkeepHelp.btn('records') : ''}</h2><span class="muted small">${active.length} active · ${withW.length - active.length} ended</span></div>
         ${active.length ? `<ul class="carlist">${active.map(({ r, w }) => `<li class="caritem ${w.soon ? 'soon' : ''}" data-rec="${r.id}">
           <span class="ci-icon">${r.icon || G(groupOf(r)).icon}</span><span class="ci-main"><b>${esc(w.label)}</b><span class="muted small">${esc(r.name)} · ${fmtDate(r.t)}</span><span class="small">${w.months ? w.months + ' mo · ' : ''}${w.text}</span></span>${warrantyChip({ ...w, label: '' })}</li>`).join('')}</ul>`
           : '<p class="muted small">No active warranties. Add one when you log a repair or replacement.</p>'}
@@ -1242,7 +1242,7 @@ window.UpkeepCar = function (api) {
       ${Object.keys(byGroup).length ? `<div class="card"><h2>Repairs by system · ${yr}</h2><ul class="timeline">${GROUPS.filter((g) => byGroup[g.id] != null).map((g) => `<li><span>${g.icon} ${g.name}</span><span>${peso(byGroup[g.id])}</span></li>`).join('')}</ul></div>` : ''}
       ${checksHTML(c)}
       <div class="card">
-        <div class="water-head"><h2>Repair & replacement records</h2><span class="muted small">${peso(total)}</span></div>
+        <div class="water-head"><h2>Repair & replacement records ${window.UpkeepHelp ? window.UpkeepHelp.btn('records') : ''}</h2><span class="muted small">${peso(total)}</span></div>
         <div class="chips"><button class="chip ${recGroup === 'all' ? 'on' : ''}" data-rgrp="all">All (${recs.length})</button>${present.map((g) => `<button class="chip ${recGroup === g.id ? 'on' : ''}" data-rgrp="${g.id}">${g.icon} ${g.name}</button>`).join('')}</div>
         <ul class="carlist">${shown.map(recRowHTML).join('') || '<li class="muted small">No records yet. Tap “Log repair / replacement” to add one — with parts, cost, receipt and warranty.</li>'}</ul>
       </div>`;

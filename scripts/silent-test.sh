@@ -7,6 +7,7 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb shell pm grant $P android.permission.POST_NOTIFICATIONS
 adb root >/dev/null 2>&1; adb wait-for-device; sleep 3
 adb shell am start -n $P/.MainActivity; sleep 20
+adb logcat -d | grep -m1 "legacy library alarms" | tee -a smoke/silent-legacy.txt
 adb shell "am start -a android.intent.action.VIEW -d fitdad://start $P"; sleep 8
 adb shell input keyevent KEYCODE_HOME; sleep 2
 
@@ -77,9 +78,14 @@ fire "B2: toggle OFF + Do Not Disturb ON, stand-up channel -> expect NO alarm-st
 adb shell cmd notification set_dnd off >/dev/null 2>&1
 setring true
 ringer normal; adb shell cmd notification set_dnd on >/dev/null 2>&1
-fire "C1 (control): toggle ON + Do Not Disturb, water -> expect alarm-stream ring" water
-fire "C2 (control): toggle ON + Do Not Disturb, stand-up channel -> expect alarm-stream ring" test
-ringer normal; adb shell cmd notification set_dnd off >/dev/null 2>&1
+fire "C1: toggle ON + Do Not Disturb, water -> expect NO ring (DND wins)" water
+fire "C2: toggle ON + Do Not Disturb, stand-up channel -> expect NO ring (DND wins)" test
+adb shell cmd notification set_dnd off >/dev/null 2>&1
+# try to put the emulator on Vibrate/Silent for a positive check (ring volume to 0)
+adb shell cmd media_session volume --stream 2 --set 0 >/dev/null 2>&1; adb shell cmd audio set-ringer-mode vibrate >/dev/null 2>&1
+fire "D (control): toggle ON + ring volume 0, water -> expect alarm-stream ring IF the ringer really changed (see ringerMode in log)" water
+ringer normal
+echo "legacy cleanup: $(adb logcat -d -b main | grep -m1 'legacy library alarms')" | tee -a $R
 echo "---- channels after test ----" | tee -a $R
 adb shell dumpsys notification | grep -oE "NotificationChannel\{mId='(fitdad-alarm|fitdad-water|upkeep-car)'[^}]*" | grep -oE "mId='[^']*'|mBypassDnd=[a-z]*|usage=[A-Z_]*" | paste -sd' ' | tee -a $R
 exit 0

@@ -251,8 +251,13 @@ public class ReminderGate extends BroadcastReceiver {
                 NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
                 dnd = nm.getCurrentInterruptionFilter() > NotificationManager.INTERRUPTION_FILTER_ALL;
             }
-            if (mode == android.media.AudioManager.RINGER_MODE_NORMAL && !dnd) { android.util.Log.i("UpkeepGate", "normal ring mode — notification sound plays"); return; }
+            if (dnd) { android.util.Log.i("UpkeepGate", "Do Not Disturb on — staying quiet"); return; }          // DND always wins
+            if (mode == android.media.AudioManager.RINGER_MODE_NORMAL) { android.util.Log.i("UpkeepGate", "normal ring mode — notification sound plays"); return; }
             String kind = it.optString("kind");
+            // only stand-ups, water and the test alarm — car/check-in reminders never ring through Silent
+            if (!"stand".equals(kind) && !"water".equals(kind) && !"test".equals(kind)) { android.util.Log.i("UpkeepGate", "no silent ring for " + kind); return; }
+            // never a sound without a visible notification (blocked app/channel, or the system hid it)
+            if (!visible(ctx, it)) { android.util.Log.i("UpkeepGate", "notification not visible — staying quiet"); return; }
             int raw = ("water".equals(kind) || "check".equals(kind)) ? R.raw.fitdad_water : R.raw.fitdad_alarm;
             android.media.AudioAttributes attrs = new android.media.AudioAttributes.Builder()
                     .setUsage(android.media.AudioAttributes.USAGE_ALARM)
@@ -277,6 +282,23 @@ public class ReminderGate extends BroadcastReceiver {
         } finally {
             if (!done && pr != null) pr.finish();
         }
+    }
+
+    static boolean visible(Context ctx, JSONObject it) {
+        try {
+            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (!androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                android.app.NotificationChannel ch = nm.getNotificationChannel(safeChannel(ctx, it.optString("channel", "fitdad-alarm")));
+                if (ch == null || ch.getImportance() == NotificationManager.IMPORTANCE_NONE) return false;
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                int id = it.optInt("id");
+                for (android.service.notification.StatusBarNotification sb : nm.getActiveNotifications()) if (sb.getId() == id) return true;
+                return false;
+            }
+            return true;
+        } catch (Exception e) { return false; }
     }
 
     /** The core rule: look at what you actually did (anywhere) before bothering you. */

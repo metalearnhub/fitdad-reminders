@@ -19,6 +19,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(WidgetBridgePlugin.class);
         if (savedInstanceState == null) recordNotificationAction(getIntent());
         super.onCreate(savedInstanceState);
+        cancelLegacyAlarms();
     }
 
     @Override
@@ -65,5 +66,33 @@ public class MainActivity extends BridgeActivity {
             i.putExtra(EXTRA_HANDLED, true);
             FitDadWidget.updateAll(this);
         } catch (Exception ignored) { }
+    }
+
+    /**
+     * Older builds scheduled reminders through the notification library, which rings without checking
+     * whether you're paused, off for the day, or already did it ("zombie" alerts). Cancel any of those once.
+     */
+    private void cancelLegacyAlarms() {
+        SharedPreferences flags = getSharedPreferences("upkeep_sched", MODE_PRIVATE);
+        if (flags.getBoolean("legacy_cleared_v2", false)) return;
+        try {
+            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            int f = android.app.PendingIntent.FLAG_NO_CREATE | (android.os.Build.VERSION.SDK_INT >= 31 ? android.app.PendingIntent.FLAG_MUTABLE : 0);
+            Intent pub = new Intent().setComponent(new android.content.ComponentName(getPackageName(),
+                    "com.capacitorjs.plugins.localnotifications.TimedNotificationPublisher"));
+            java.util.Set<Integer> ids = new java.util.HashSet<>();
+            SharedPreferences store = getSharedPreferences("NOTIFICATION_STORE", MODE_PRIVATE);
+            for (String k : store.getAll().keySet()) { try { ids.add(Integer.parseInt(k)); } catch (Exception ignored) { } }
+            int[][] ranges = { { 1000, 1200 }, { 2000, 2200 }, { 3000, 3100 }, { 4000, 4100 }, { 5000, 6000 }, { 9000, 9100 }, { 10000, 10700 }, { 20000, 22000 } };
+            for (int[] r : ranges) for (int id = r[0]; id < r[1]; id++) ids.add(id);
+            int n = 0;
+            for (int id : ids) {
+                android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(this, id, pub, f);
+                if (pi != null) { am.cancel(pi); pi.cancel(); n++; }
+            }
+            store.edit().clear().apply();
+            android.util.Log.i("UpkeepGate", "cancelled " + n + " legacy library alarms");
+        } catch (Exception e) { android.util.Log.w("UpkeepGate", "legacy cleanup failed: " + e); }
+        flags.edit().putBoolean("legacy_cleared_v2", true).apply();
     }
 }

@@ -1043,7 +1043,7 @@
     $('s-waterMode-auto').onclick = () => { modeDraft = 'auto'; renderWaterPlanner(); };
     $('s-waterMode-fixed').onclick = () => { modeDraft = 'fixed'; renderWaterPlanner(); };
     $('bedEdit').onclick = openBedSheet;
-    $('s-ringSilent').onchange = async () => { settings.ringOnSilent = $('s-ringSilent').checked; await save(); toast(settings.ringOnSilent ? 'Reminders will ring on Silent' : 'Reminders follow your Silent mode'); };
+    $('s-ringSilent').onchange = async () => { settings.ringOnSilent = $('s-ringSilent').checked; await save(); toast(settings.ringOnSilent ? 'Stand-ups & water ring on Silent (not during Do Not Disturb)' : 'Reminders follow your Silent mode'); };
     // Feature toggles save and apply immediately
     ['water', 'stand', 'car'].forEach((k) => {
       $('f-' + k).onchange = async () => {

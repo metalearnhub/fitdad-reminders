@@ -242,6 +242,65 @@
   }
   function closeSheet() { $('sheet').classList.remove('show'); }
 
+  // ---------- Glasses logged late ("I drank 4 already, tapped 4 times") ----------
+  // Taps less than 3 min apart are a "burst". Upkeep asks if they were drunk earlier and, if so, spreads them
+  // back in time — so the kidney-safe pace isn't fooled into thinking you just drank 1 L, and the plan stays right.
+  const BURST_GAP = 3 * 60000;
+  function waterBurst(r) {
+    const ev = (r.log || []).filter((e) => e.k === 'water').sort((a, b) => a.t - b.t);
+    if (ev.length < 2) return null;
+    let i = ev.length - 1; const evs = [ev[i]];
+    while (i > 0 && ev[i].t - ev[i - 1].t <= BURST_GAP) { evs.unshift(ev[i - 1]); i--; }
+    if (evs.length < 2 || evs.some((e) => e.burstOk) || Date.now() - evs[evs.length - 1].t > 6 * 3600000) return null;
+    const first = evs[0].t, last = evs[evs.length - 1].t;
+    const prev = i > 0 ? ev[i - 1].t : null;     // the glass before the burst
+    // default "since": your previous glass, else when the day started (if earlier), else ~45 min per glass back
+    const dayFloor = atTime(new Date(first), '04:00').getTime();
+    let from = prev || (r.dayStart && r.dayStart < first - 10 * 60000 ? r.dayStart : Math.max(dayFloor, first - evs.length * 45 * 60000));
+    return { evs, first, last, from, to: last };
+  }
+  function spreadGlasses(r, evs, from, to) {
+    const n = evs.length;
+    evs.forEach((e, k) => { e.t = Math.round(from + (k + 1) * (to - from) / n); e.late = true; e.burstOk = true; });
+    r.log.sort((a, b) => a.t - b.t);
+    if (!r.dayStart || r.dayStart > evs[0].t) r.dayStart = Math.min(evs[0].t, r.dayStart || Infinity);
+  }
+  async function fixBurst(how) {
+    const r = waterRec(); const b = waterBurst(r); if (!b) return;
+    if (how === 'now') { b.evs.forEach((e) => { e.burstOk = true; }); await save(); render(); return; }
+    if (how === 'spread') {
+      spreadGlasses(r, b.evs, b.from, b.to);
+      await save(); render(); await reschedule();
+      const n = $('nextWater') ? $('nextWater').textContent.replace('Next glass', 'next glass') : '';
+      toast(`Spread ${b.evs.length} glasses ${fmtTime(new Date(b.evs[0].t))} → ${fmtTime(new Date(b.to))}${n ? ' · ' + n : ''}`, 5000);
+      return;
+    }
+    // pick the times yourself
+    const hm = (t) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+    const body = $('sheetBody');
+    body.innerHTML = `<div class="sheet-icon">🕘</div><h2>When did you drink these ${b.evs.length} glasses?</h2>
+      <p class="muted">They'll be spread evenly between these times.</p>
+      <div class="form"><div class="row2">
+        <label>First glass around<input id="bfFrom" type="time" value="${hm(b.from + (b.to - b.from) / b.evs.length)}" /></label>
+        <label>Last glass around<input id="bfTo" type="time" value="${hm(b.to)}" /></label></div></div>
+      <p class="muted small" id="bfMsg"></p>
+      <div class="sheet-btns"><button class="btn water" id="bfSave">Save times</button><button class="btn ghost" id="bfCancel">Cancel</button></div>`;
+    $('sheet').classList.add('show');
+    $('bfCancel').onclick = closeSheet;
+    $('bfSave').onclick = async () => {
+      const day = new Date(b.last); const at = (v) => atTime(day, v).getTime();
+      let f = at($('bfFrom').value), t = at($('bfTo').value);
+      if (t > Date.now()) t = Date.now();
+      if (!(f <= t)) { $('bfMsg').textContent = 'The first glass must be before the last one.'; return; }
+      const n = b.evs.length;
+      // spreadGlasses puts glass k at from + (k+1)·step, so step back one slot to land the first glass on "f"
+      const from = n > 1 ? f - (t - f) / (n - 1) : f - 60000;
+      spreadGlasses(r, b.evs, from, t);
+      closeSheet(); await save(); render(); await reschedule();
+      toast(`Saved: ${n} glasses ${fmtTime(new Date(f))} → ${fmtTime(new Date(t))}`, 4000);
+    };
+  }
+
   // ---------- Deep links from the home-screen widget ----------
   // Show only the tabs, Today halves and settings that belong to the features you turned on
   function applyFeatures() {
@@ -824,6 +883,13 @@
     $('waterPlan').innerHTML = gl === 0 ? `All ${total} glasses done 🎉`
       : `Glass ${total - gl + 1} of ${total} ${chip}<div class="stat-line">${gl} × ${settings.glass} ml to go</div>${safeNote}`;
     $('bedLabel').textContent = `Bed ${fmtTime(new Date(cwin.bedAt))} · last glass ${fmtTime(new Date(cwin.end))} · change`;
+    const burst = waterBurst(wt);
+    $('waterBurst').hidden = !burst;
+    if (burst) {
+      $('waterBurst').innerHTML = `<b>${burst.evs.length} glasses logged within ${Math.max(1, Math.round((burst.last - burst.first) / 60000))} min.</b> Drank them earlier?
+        <div class="burst-btns"><button class="chip on" data-burst="spread">Spread since ${fmtTime(new Date(burst.from))}</button><button class="chip" data-burst="pick">Pick times</button><button class="chip" data-burst="now">Just now</button></div>`;
+      $('waterBurst').querySelectorAll('[data-burst]').forEach((x) => { x.onclick = () => fixBurst(x.dataset.burst); });
+    }
     $('waterPlus').textContent = `+ ${settings.glass} ml`;
 
     // stand
@@ -1052,7 +1118,8 @@
     $('waterPlus').onclick = async () => {
       confirmWater('app'); await save(); render(); await reschedule();
       const hr = recentMl(waterRec(), Date.now());
-      if (hr > safeRate()) { const n = $('nextWater') ? $('nextWater').textContent.replace('Next glass', 'next glass') : ''; toast(`${hr > KIDNEY_MAX ? '⚠ ' : 'Easy — '}${liters(hr)} in the last hour${hr > KIDNEY_MAX ? ' (kidneys clear ~1 L/h). Pause water for now' : ''}${n ? ' · ' + n : ''}`, 6000); }
+      if (waterBurst(waterRec())) toast(`+${settings.glass} ml · logged ${waterBurst(waterRec()).evs.length} quickly — drank them earlier? Use "Spread" on the water card`, 4000);
+      else if (hr > safeRate()) { const n = $('nextWater') ? $('nextWater').textContent.replace('Next glass', 'next glass') : ''; toast(`${hr > KIDNEY_MAX ? '⚠ ' : 'Easy — '}${liters(hr)} in the last hour${hr > KIDNEY_MAX ? ' (kidneys clear ~1 L/h). Pause water for now' : ''}${n ? ' · ' + n : ''}`, 6000); }
       else replanNote(`+${settings.glass} ml`);
     };
     $('waterMinus').onclick = async () => { undoWater(); await save(); render(); await reschedule(); replanNote(`−${settings.glass} ml · re-planned`); };

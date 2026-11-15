@@ -360,3 +360,10 @@ details.grp .specs { margin: 0 0 10px; }
 .spec-tag.ok { background: rgba(52, 211, 153, .15); color: var(--stand); }
 .spec-tag.chk { background: rgba(245, 158, 11, .15); color: var(--amber); }
 .spec-hi { display: block; margin-top: 4px; color: #FCD34D; font-size: 12px; }
+
+.today .water-half { position: relative; }
+/* sits over the ring area so the fixed-height halves never grow */
+.burst { position: absolute; left: 12px; right: 12px; top: 46px; z-index: 3; background: #13222E; border: 1px solid rgba(56, 189, 248, .5); border-radius: 12px; padding: 10px 11px; font-size: 13px; line-height: 1.35; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+.burst[hidden] { display: none; }
+.burst-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.burst-btns .chip { font-size: 12px; padding: 6px 10px; }

@@ -243,7 +243,7 @@ public class ReminderGate extends BroadcastReceiver {
         boolean done = false;
         try {
             JSONObject st = root.optJSONObject("settings");
-            if (st != null && !st.optBoolean("ringOnSilent", true)) return;
+            if (st != null && !st.optBoolean("ringOnSilent", true)) { android.util.Log.i("UpkeepGate", "ring-on-silent OFF — following the phone's Silent/DND"); return; }
             android.media.AudioManager am = (android.media.AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
             int mode = am.getRingerMode();
             boolean dnd = false;
@@ -379,6 +379,45 @@ public class ReminderGate extends BroadcastReceiver {
         return PendingIntent.getActivity(ctx, req, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
+    // ---------- Channels always follow the phone's Silent / Do Not Disturb ----------
+    // Only our own three channels are used. Each must play as a normal NOTIFICATION sound (muted by Silent,
+    // blocked by DND) — never as an alarm and never bypassing DND. The only way a reminder sounds on Silent is
+    // ringThroughSilent(), and that only runs when "Ring even on Silent" is ON.
+    static final String[][] CHANNELS = {
+        { "fitdad-alarm", "Stand-up & nudges", "fitdad_alarm" },
+        { "fitdad-water", "Water reminders", "fitdad_water" },
+        { "upkeep-car", "Car care", null },
+    };
+    static String safeChannel(Context ctx, String id) {
+        boolean known = false;
+        for (String[] c : CHANNELS) if (c[0].equals(id)) known = true;
+        if (!known) id = "fitdad-alarm";     // e.g. the library's "default" channel plays on the alarm stream — never use it
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+                for (String[] c : CHANNELS) {
+                    android.app.NotificationChannel ch = nm.getNotificationChannel(c[0]);
+                    boolean bad = ch != null && (ch.canBypassDnd() || (ch.getAudioAttributes() != null
+                            && ch.getAudioAttributes().getUsage() != android.media.AudioAttributes.USAGE_NOTIFICATION));
+                    if (bad) { nm.deleteNotificationChannel(c[0]); ch = null; android.util.Log.w("UpkeepGate", "rebuilt channel " + c[0] + " to follow Silent"); }
+                    if (ch == null) {
+                        ch = new android.app.NotificationChannel(c[0], c[1], "upkeep-car".equals(c[0]) ? NotificationManager.IMPORTANCE_HIGH : NotificationManager.IMPORTANCE_MAX);
+                        ch.enableVibration(true);
+                        ch.setBypassDnd(false);
+                        android.media.AudioAttributes aa = new android.media.AudioAttributes.Builder()
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build();
+                        android.net.Uri snd = c[2] != null ? android.net.Uri.parse("android.resource://" + ctx.getPackageName() + "/raw/" + c[2])
+                                : android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
+                        ch.setSound(snd, aa);
+                        nm.createNotificationChannel(ch);
+                    }
+                }
+            } catch (Exception e) { android.util.Log.w("UpkeepGate", "channel check failed: " + e); }
+        }
+        return id;
+    }
+
     private static void show(Context ctx, JSONObject root, JSONObject it) throws Exception {
         int id = it.getInt("id");
         String kind = it.optString("kind");
@@ -397,7 +436,7 @@ public class ReminderGate extends BroadcastReceiver {
                     + String.format(Locale.US, "%.2f", goal / 1000.0) + " L";
         }
 
-        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, it.optString("channel", "fitdad-alarm"))
+        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, safeChannel(ctx, it.optString("channel", "fitdad-alarm")))
                 .setSmallIcon(R.drawable.ic_stat_fitdad)
                 .setColor(Color.parseColor("#F59E0B"))
                 .setContentTitle(title)
